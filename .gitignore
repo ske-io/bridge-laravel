@@ -1,0 +1,13 @@
+/vendor/
+/.phpunit.cache/
+.phpunit.result.cache
+
+# A library does not ship a lock file: consumers resolve against their own
+# application's constraints, so committing one here only creates churn.
+composer.lock
+
+.DS_Store
+/.idea
+/.vscode
+/.zed
+/.nova

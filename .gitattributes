@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+*.md  diff=markdown
+*.php diff=php
+
+# This package is installed into every deployed image. Nothing below is needed
+# at runtime, and leaving it out keeps test doubles out of production vendor.
+/.github        export-ignore
+/tests          export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore
+/phpunit.xml    export-ignore

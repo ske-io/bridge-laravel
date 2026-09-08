@@ -1,0 +1,39 @@
+{
+    "name": "ske/laravel-bridge",
+    "description": "Runs a Laravel application on SKE: HTTP, queue, CLI and scheduler",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.7"
+    },
+    "autoload": {
+        "files": [
+            "bootstrap.php"
+        ],
+        "psr-4": {
+            "Ske\\Bridge\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ske\\Bridge\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Ske\\Bridge\\Laravel\\SkeServiceProvider"
+            ]
+        }
+    }
+}
