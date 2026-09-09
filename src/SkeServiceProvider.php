@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Monolog\Handler\StreamHandler;
 use Ske\Bridge\Laravel\Console\CommandRunner;
 use Ske\Bridge\Laravel\Handlers\CliHandler;
 use Ske\Bridge\Laravel\Handlers\QueueHandler;
@@ -91,15 +92,15 @@ final class SkeServiceProvider extends ServiceProvider
      */
     private function configureLogging(): void
     {
-        $this->app['config']->set('logging.channels.stderr', [
+        config(['logging.channels.stderr' => [
             'driver' => 'monolog',
-            'handler' => \Monolog\Handler\StreamHandler::class,
+            'handler' => StreamHandler::class,
             'with' => ['stream' => 'php://stderr'],
             'level' => 'debug',
-        ]);
+        ]]);
 
-        if ($this->app['config']->get('logging.default') === 'stack') {
-            $this->app['config']->set('logging.default', 'stderr');
+        if (config('logging.default') === 'stack') {
+            config(['logging.default' => 'stderr']);
         }
     }
 
@@ -112,9 +113,8 @@ final class SkeServiceProvider extends ServiceProvider
     private function configureAwsCredentials(): void
     {
         foreach (['queue.connections.sqs', 'filesystems.disks.s3', 'mail.mailers.ses'] as $path) {
-            if ($this->app['config']->has("{$path}.key")) {
-                $this->app['config']->set("{$path}.key", null);
-                $this->app['config']->set("{$path}.secret", null);
+            if (config()->has("{$path}.key")) {
+                config(["{$path}.key" => null, "{$path}.secret" => null]);
             }
         }
     }

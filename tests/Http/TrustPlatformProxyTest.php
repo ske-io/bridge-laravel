@@ -25,6 +25,9 @@ afterEach(function (): void {
  * A request as the adapter forwards it: it reached the application over
  * loopback, and the real connection is described by the headers.
  */
+/**
+ * @param  array<string, string>  $headers
+ */
 function forwarded(array $headers = []): Request
 {
     $request = Request::create('http://127.0.0.1/orders', 'GET');

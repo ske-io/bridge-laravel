@@ -21,8 +21,8 @@ final class RecordingWorker extends Worker
 
     public ?WorkerOptions $lastOptions = null;
 
-    /** @var (callable(PlatformJob): void)|null */
-    public $onProcess = null;
+    /** @var (Closure(PlatformJob): void)|null */
+    public ?Closure $onProcess = null;
 
     public function __construct() {}
 
@@ -31,7 +31,7 @@ final class RecordingWorker extends Worker
         $this->handled[] = $job;
         $this->lastOptions = $options;
 
-        if ($this->onProcess !== null) {
+        if ($this->onProcess !== null && $job instanceof PlatformJob) {
             ($this->onProcess)($job);
         }
     }

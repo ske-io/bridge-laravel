@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Foundation\Bus\PendingDispatch;
 use Ske\Bridge\Laravel\Console\CommandResult;
 use Ske\Bridge\Laravel\Console\CommandRunner;
 
@@ -17,7 +19,7 @@ final class RecordingKernel implements Kernel
 {
     public ?string $lastCommand = null;
 
-    /** @var array<mixed> */
+    /** @var array<string, mixed> */
     public array $lastParameters = [];
 
     public int $calls = 0;
@@ -28,7 +30,10 @@ final class RecordingKernel implements Kernel
         private readonly ?Throwable $throws = null,
     ) {}
 
-    public function call($command, array $parameters = [], $outputBuffer = null)
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    public function call($command, array $parameters = [], $outputBuffer = null): int
     {
         $this->calls++;
         $this->lastCommand = $command;
@@ -41,20 +46,30 @@ final class RecordingKernel implements Kernel
         return $this->exitCode;
     }
 
-    public function output()
+    public function output(): string
     {
         return $this->output;
     }
 
-    public function bootstrap() {}
+    public function bootstrap(): void {}
 
-    public function handle($input, $output = null) {}
+    public function handle($input, $output = null): int
+    {
+        return 0;
+    }
 
-    public function terminate($input, $status) {}
+    public function terminate($input, $status): void {}
 
-    public function queue($command, array $parameters = []) {}
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    public function queue($command, array $parameters = []): PendingDispatch
+    {
+        throw new RuntimeException('Not implemented in test double');
+    }
 
-    public function all()
+    /** @return array<string, Command> */
+    public function all(): array
     {
         return [];
     }

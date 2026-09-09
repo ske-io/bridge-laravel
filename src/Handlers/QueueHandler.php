@@ -25,10 +25,13 @@ final readonly class QueueHandler
     {
         $payload = $request->json()->all();
 
-        $outcomes = $this->runner->process(
-            is_array($payload['records'] ?? null) ? $payload['records'] : [],
-            is_array($payload['options'] ?? null) ? $payload['options'] : [],
-        );
+        /** @var list<array{message_id?: string, body?: string, attempts?: int}> $records */
+        $records = is_array($payload['records'] ?? null) ? $payload['records'] : [];
+
+        /** @var array{timeout?: int, memory?: int, tries?: int, backoff?: int} $options */
+        $options = is_array($payload['options'] ?? null) ? $payload['options'] : [];
+
+        $outcomes = $this->runner->process($records, $options);
 
         return response()->json([
             'processed' => count($outcomes),

@@ -8,7 +8,10 @@
         "laravel/framework": "^11.0 || ^12.0 || ^13.0"
     },
     "require-dev": {
-        "pestphp/pest": "^4.7"
+        "pestphp/pest": "^4.7",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-mockery": "^2.0",
+        "laravel/pint": "^1.27"
     },
     "autoload": {
         "files": [

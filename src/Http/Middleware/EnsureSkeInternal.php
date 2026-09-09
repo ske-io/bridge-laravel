@@ -27,7 +27,9 @@ final class EnsureSkeInternal
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (! hash_equals('true', (string) $request->header(self::HEADER, ''))) {
+        $header = $request->header(self::HEADER, '');
+
+        if (! is_string($header) || ! hash_equals('true', $header)) {
             // Thrown rather than abort()'d: the helper resolves the application
             // from the container, which would make this reachable only from a
             // booted app. The framework's handler renders this identically.

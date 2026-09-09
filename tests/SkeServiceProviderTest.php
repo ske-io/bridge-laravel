@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Config\Repository;
+use Illuminate\Console\Command;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
@@ -33,7 +35,10 @@ function withPlatform(bool $present, Closure $callback): void
 {
     $server = $_SERVER;
     $env = $_ENV;
-    $process = array_map(getenv(...), PLATFORM_VARIABLES);
+    $process = array_map(
+        fn (string $key): string|false => getenv($key),
+        PLATFORM_VARIABLES,
+    );
     $container = Container::getInstance();
 
     foreach (PLATFORM_VARIABLES as $key) {
@@ -63,6 +68,8 @@ function withPlatform(bool $present, Closure $callback): void
  * The smallest application the provider can be pointed at: a config repository
  * and a router, which is all it touches. Deliberately not a booted framework —
  * what is under test is the wiring, not Laravel.
+ *
+ * @param  array<string, mixed>  $config
  */
 function applicationFor(array $config = []): Application
 {
@@ -256,51 +263,69 @@ function fakeConsoleKernel(): ConsoleKernel
 {
     return new class implements ConsoleKernel
     {
-        public function bootstrap() {}
+        public function bootstrap(): void {}
 
-        public function handle($input, $output = null) {}
-
-        public function terminate($input, $status) {}
-
-        public function call($command, array $parameters = [], $outputBuffer = null)
+        public function handle($input, $output = null): int
         {
             return 0;
         }
 
-        public function queue($command, array $parameters = []) {}
+        public function terminate($input, $status): void {}
 
-        public function all()
+        /**
+         * @param  array<string, mixed>  $parameters
+         */
+        public function call($command, array $parameters = [], $outputBuffer = null): int
+        {
+            return 0;
+        }
+
+        /**
+         * @param  array<string, mixed>  $parameters
+         */
+        public function queue($command, array $parameters = []): PendingDispatch
+        {
+            throw new RuntimeException('Not implemented in test double');
+        }
+
+        /** @return array<string, Command> */
+        public function all(): array
         {
             return [];
         }
 
-        public function output()
+        public function output(): string
         {
             return '';
         }
     };
 }
 
-function fakeHttpKernel(): object
+/**
+ * A kernel that records what was prepended rather than running it through a
+ * middleware pipeline. Extends the concrete class because that is what the
+ * provider resolves — the contract does not declare prependMiddleware().
+ */
+final class RecordingHttpKernel extends HttpKernel
 {
-    return new class implements HttpKernel
+    /** @var list<string> */
+    public array $prepended = [];
+
+    public function __construct()
     {
-        /** @var list<string> */
-        public array $prepended = [];
+        // The parent wants an Application and a Router; this test does not
+        // exercise the pipeline, so the fields stay uninitialised.
+    }
 
-        public function prependMiddleware($middleware): self
-        {
-            $this->prepended[] = $middleware;
+    public function prependMiddleware($middleware): static
+    {
+        $this->prepended[] = $middleware;
 
-            return $this;
-        }
+        return $this;
+    }
+}
 
-        public function bootstrap() {}
-
-        public function handle($request) {}
-
-        public function terminate($request, $response) {}
-
-        public function getApplication() {}
-    };
+function fakeHttpKernel(): RecordingHttpKernel
+{
+    return new RecordingHttpKernel;
 }
