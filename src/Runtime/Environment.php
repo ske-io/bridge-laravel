@@ -54,6 +54,59 @@ final class Environment
     }
 
     /**
+     * Copies the process environment into $_ENV.
+     *
+     * PHP only populates $_ENV when variables_order contains "E", and the
+     * serversideup/php base image ships GPCS (no E).  On a platform where env
+     * vars carry database credentials, cache endpoints and every other secret,
+     * an empty $_ENV has two consequences:
+     *
+     *  1. Laravel's env() — which reads $_ENV first — returns null for every
+     *     platform-set variable.
+     *  2. Dotenv's "immutable" loader sees no collision in $_ENV and writes
+     *     every value from a stale .env, effectively overriding the platform.
+     *
+     * Copying the real process environment into $_ENV before the framework
+     * boots fixes both: env() finds the platform value, and Dotenv skips any
+     * key that is already present.
+     */
+    public static function publish(): void
+    {
+        foreach (getenv() as $key => $value) {
+            if (is_string($key) && is_string($value)) {
+                $_ENV[$key] = $value;
+            }
+        }
+    }
+
+    /**
+     * Removes .env from the project root so Dotenv cannot load it.
+     *
+     * A Docker image built with `COPY . /var/task` may carry a .env that the
+     * developer committed or that the .dockerignore did not exclude.  On the
+     * platform every variable comes from the service's env-var configuration,
+     * and a stale .env can only override them with wrong values.
+     *
+     * The image filesystem is ephemeral — nothing survives the container — so
+     * deleting the file has no lasting effect.
+     */
+    public static function stripDotenv(): void
+    {
+        $candidates = array_filter([
+            getcwd(),
+            getenv('LAMBDA_TASK_ROOT') ?: null,
+            '/var/task',
+        ]);
+
+        foreach ($candidates as $dir) {
+            $path = $dir . '/.env';
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    /**
      * One variable, or null when it is unset or empty.
      *
      * An empty value is treated as absent: an unset Lambda environment
