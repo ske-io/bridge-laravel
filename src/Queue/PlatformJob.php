@@ -24,6 +24,8 @@ final class PlatformJob extends Job implements JobContract
 {
     private ?int $releaseDelay = null;
 
+    private ?string $error = null;
+
     public function __construct(
         Container $container,
         private readonly string $messageId,
@@ -50,6 +52,26 @@ final class PlatformJob extends Job implements JobContract
     public function attempts(): int
     {
         return $this->attempts;
+    }
+
+    /**
+     * The parent's fail() dispatches events, calls the job class's failed()
+     * hook, then deletes the job. None of that is appropriate here:
+     *
+     *  - Event dispatch needs a booted application, and this runs inside a
+     *    catch block where the worker already reported the failure.
+     *  - Deletion would mark the outcome as "deleted", telling the adapter to
+     *    acknowledge the message — the opposite of what a failure should do.
+     *
+     * Recording the failure and its message is all the adapter needs.
+     */
+    public function fail($e = null): void
+    {
+        $this->markAsFailed();
+
+        if ($e instanceof \Throwable) {
+            $this->error = $e->getMessage();
+        }
     }
 
     public function release($delay = 0): void
@@ -80,6 +102,7 @@ final class PlatformJob extends Job implements JobContract
             released: $this->isReleased(),
             releaseDelay: $this->releaseDelay,
             failed: $this->hasFailed(),
+            error: $this->error,
         );
     }
 }

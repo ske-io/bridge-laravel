@@ -60,10 +60,6 @@ final readonly class QueueRunner
         try {
             $this->worker->process($this->connectionName, $job, $options);
         } catch (Throwable $e) {
-            // Worker::process already reports the failure through the
-            // framework's exception handler and marks the job; this catch only
-            // stops one bad message ending the whole invocation, so the
-            // remaining records still get their turn.
             $job->fail($e);
         }
 

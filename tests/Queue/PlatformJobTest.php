@@ -68,17 +68,24 @@ it('does not report a released job as deleted', function () {
         ->and($job->outcome()->released)->toBeTrue();
 });
 
-it('records a failure', function () {
-    // markAsFailed() rather than fail(): the latter walks the framework's whole
-    // failure path — event dispatcher, config, the job's own failed() hook —
-    // which is Laravel's behaviour and needs a booted application. What this
-    // module adds is the recording, and that is what outcome() reads.
+it('records a failure with its error message', function () {
+    $job = makeJob();
+
+    $job->fail(new RuntimeException('Connection timed out'));
+
+    expect($job->hasFailed())->toBeTrue()
+        ->and($job->outcome()->failed)->toBeTrue()
+        ->and($job->outcome()->error)->toBe('Connection timed out');
+});
+
+it('records a failure without an error when none is given', function () {
     $job = makeJob();
 
     $job->markAsFailed();
 
     expect($job->hasFailed())->toBeTrue()
-        ->and($job->outcome()->failed)->toBeTrue();
+        ->and($job->outcome()->failed)->toBeTrue()
+        ->and($job->outcome()->error)->toBeNull();
 });
 
 it('reports an untouched job as neither deleted nor released', function () {
@@ -88,5 +95,6 @@ it('reports an untouched job as neither deleted nor released', function () {
         'released' => false,
         'release_delay' => null,
         'failed' => false,
+        'error' => null,
     ]);
 });

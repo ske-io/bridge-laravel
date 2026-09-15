@@ -80,10 +80,6 @@ final class SkeServiceProvider extends ServiceProvider
             Route::post('/__ske/queue', QueueHandler::class);
             Route::post('/__ske/scheduler', SchedulerHandler::class);
         });
-
-        // Reachable from outside on purpose: this is what the load balancer
-        // probes, and the adapter allows exactly this one path through.
-        Route::get('/__ske/health', fn () => response('OK'));
     }
 
     /**

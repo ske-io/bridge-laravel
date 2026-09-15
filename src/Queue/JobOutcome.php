@@ -19,10 +19,11 @@ final readonly class JobOutcome
         public bool $released,
         public ?int $releaseDelay,
         public bool $failed,
+        public ?string $error = null,
     ) {}
 
     /**
-     * @return array{message_id: string, deleted: bool, released: bool, release_delay: int|null, failed: bool}
+     * @return array{message_id: string, deleted: bool, released: bool, release_delay: int|null, failed: bool, error: string|null}
      */
     public function toArray(): array
     {
@@ -32,6 +33,7 @@ final readonly class JobOutcome
             'released' => $this->released,
             'release_delay' => $this->releaseDelay,
             'failed' => $this->failed,
+            'error' => $this->error,
         ];
     }
 }

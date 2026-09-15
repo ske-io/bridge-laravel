@@ -140,7 +140,7 @@ it('binds the two runners as singletons', function () {
     });
 });
 
-it('registers the four routes the adapter calls', function () {
+it('registers the three internal routes the adapter calls', function () {
     withPlatform(present: true, callback: function () {
         $app = applicationFor();
 
@@ -150,16 +150,15 @@ it('registers the four routes the adapter calls', function () {
             ->mapWithKeys(fn ($route) => [$route->uri() => [$route->methods(), $route->middleware()]]);
 
         expect($routes->keys()->all())->toBe([
-            '__ske/cli', '__ske/queue', '__ske/scheduler', '__ske/health',
+            '__ske/cli', '__ske/queue', '__ske/scheduler',
         ])
             ->and($routes['__ske/cli'][0])->toContain('POST')
-            ->and($routes['__ske/health'][0])->toContain('GET');
+            ->and($routes['__ske/queue'][0])->toContain('POST')
+            ->and($routes['__ske/scheduler'][0])->toContain('POST');
     });
 });
 
-it('guards everything except the health check', function () {
-    // The load balancer probes /__ske/health, so it is reachable from outside
-    // on purpose. The other three run arbitrary application code.
+it('guards all internal routes', function () {
     withPlatform(present: true, callback: function () {
         $app = applicationFor();
 
