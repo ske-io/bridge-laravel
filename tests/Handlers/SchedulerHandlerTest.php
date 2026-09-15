@@ -32,7 +32,10 @@ final class SchedulerKernel implements Kernel
 
     public function bootstrap(): void {}
 
-    public function handle($input, $output = null): int { return 0; }
+    public function handle($input, $output = null): int
+    {
+        return 0;
+    }
 
     public function terminate($input, $status): void {}
 
@@ -43,7 +46,10 @@ final class SchedulerKernel implements Kernel
     }
 
     /** @return array<string, Command> */
-    public function all(): array { return []; }
+    public function all(): array
+    {
+        return [];
+    }
 }
 
 it('runs schedule:run', function () {

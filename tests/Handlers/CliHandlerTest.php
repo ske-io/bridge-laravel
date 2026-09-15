@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Ske\Bridge\Laravel\Console\CommandRunner;
 use Ske\Bridge\Laravel\Handlers\CliHandler;
@@ -37,7 +38,10 @@ final class CliKernel implements Kernel
 
     public function bootstrap(): void {}
 
-    public function handle($input, $output = null): int { return 0; }
+    public function handle($input, $output = null): int
+    {
+        return 0;
+    }
 
     public function terminate($input, $status): void {}
 
@@ -48,7 +52,10 @@ final class CliKernel implements Kernel
     }
 
     /** @return array<string, Command> */
-    public function all(): array { return []; }
+    public function all(): array
+    {
+        return [];
+    }
 }
 
 /** @param array<string, mixed> $payload */
@@ -94,7 +101,7 @@ it('returns a JSON response with the exit code', function () {
 
     $response = $handler(cliRequest(['command' => 'fail']));
 
-    expect($response)->toBeInstanceOf(\Illuminate\Http\JsonResponse::class)
+    expect($response)->toBeInstanceOf(JsonResponse::class)
         ->and($response->getStatusCode())->toBe(200)
         ->and($response->getData(true)['exit_code'])->toBe(1);
 });
