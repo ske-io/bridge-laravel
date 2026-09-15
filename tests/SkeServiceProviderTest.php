@@ -14,6 +14,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
 use Ske\Bridge\Laravel\Console\CommandRunner;
+use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
@@ -232,7 +233,7 @@ it('does not invent credentials for a connection that has none', function () {
 
 // --- the HTTP kernel -----------------------------------------------------
 
-it('teaches the HTTP kernel to trust the platform proxy', function () {
+it('teaches the HTTP kernel to trust the platform proxy and correlate requests', function () {
     withPlatform(present: true, callback: function () {
         $_SERVER['APP_RUNNING_IN_CONSOLE'] = 'false';
 
@@ -242,7 +243,8 @@ it('teaches the HTTP kernel to trust the platform proxy', function () {
 
         registerProvider($app)->boot();
 
-        expect($kernel->prepended)->toBe([TrustPlatformProxy::class]);
+        expect($kernel->prepended)->toBe([TrustPlatformProxy::class])
+            ->and($kernel->pushed)->toBe([CorrelateRequests::class]);
     });
 });
 
@@ -310,6 +312,9 @@ final class RecordingHttpKernel extends HttpKernel
     /** @var list<string> */
     public array $prepended = [];
 
+    /** @var list<string> */
+    public array $pushed = [];
+
     public function __construct()
     {
         // The parent wants an Application and a Router; this test does not
@@ -319,6 +324,13 @@ final class RecordingHttpKernel extends HttpKernel
     public function prependMiddleware($middleware): static
     {
         $this->prepended[] = $middleware;
+
+        return $this;
+    }
+
+    public function pushMiddleware($middleware): static
+    {
+        $this->pushed[] = $middleware;
 
         return $this;
     }

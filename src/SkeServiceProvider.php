@@ -14,6 +14,7 @@ use Ske\Bridge\Laravel\Console\CommandRunner;
 use Ske\Bridge\Laravel\Handlers\CliHandler;
 use Ske\Bridge\Laravel\Handlers\QueueHandler;
 use Ske\Bridge\Laravel\Handlers\SchedulerHandler;
+use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
@@ -70,7 +71,9 @@ final class SkeServiceProvider extends ServiceProvider
             return;
         }
 
-        $this->app->make(HttpKernel::class)->prependMiddleware(TrustPlatformProxy::class);
+        $kernel = $this->app->make(HttpKernel::class);
+        $kernel->prependMiddleware(TrustPlatformProxy::class);
+        $kernel->pushMiddleware(CorrelateRequests::class);
     }
 
     private function registerRoutes(): void
