@@ -72,10 +72,11 @@ final class Environment
      */
     public static function publish(): void
     {
-        foreach (getenv() as $key => $value) {
-            if (is_string($key) && is_string($value)) {
-                $_ENV[$key] = $value;
-            }
+        /** @var array<string, string> $env */
+        $env = getenv();
+
+        foreach ($env as $key => $value) {
+            $_ENV[$key] = $value;
         }
     }
 

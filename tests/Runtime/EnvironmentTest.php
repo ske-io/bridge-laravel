@@ -140,7 +140,7 @@ it('deletes .env from the working directory', function () {
     @mkdir($dir, 0777, true);
     file_put_contents($dir.'/.env', 'APP_KEY=stale');
 
-    $original = getcwd();
+    $original = (string) getcwd();
     chdir($dir);
 
     try {
@@ -159,7 +159,7 @@ it('is a no-op when no .env exists', function () {
     $dir = sys_get_temp_dir().'/ske-test-'.uniqid();
     @mkdir($dir, 0777, true);
 
-    $original = getcwd();
+    $original = (string) getcwd();
     chdir($dir);
 
     try {
