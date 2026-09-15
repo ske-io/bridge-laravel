@@ -99,7 +99,7 @@ final class Environment
         ]);
 
         foreach ($candidates as $dir) {
-            $path = $dir . '/.env';
+            $path = $dir.'/.env';
             if (is_file($path)) {
                 @unlink($path);
             }
