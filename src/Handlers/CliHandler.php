@@ -8,9 +8,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Ske\Bridge\Laravel\Console\CommandRunner;
 
-/**
- * The route behind `ske run`. Nothing but shape: the work is CommandRunner's.
- */
 final readonly class CliHandler
 {
     public function __construct(
@@ -26,6 +23,6 @@ final readonly class CliHandler
             is_array($payload['args'] ?? null) ? $payload['args'] : [],
         );
 
-        return response()->json($result->toArray());
+        return new JsonResponse($result->toArray());
     }
 }

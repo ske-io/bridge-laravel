@@ -14,30 +14,31 @@ use Ske\Bridge\Laravel\SkeServiceProvider;
 // provider is always too late, and Environment::publish() for why $_ENV must be
 // populated before Dotenv touches it.
 
-// On-platform: copy the process environment into $_ENV so that Laravel's env()
-// and Dotenv's immutability check see the platform-set values, regardless of
-// php.ini's variables_order setting. Then remove any .env file that made it
-// into the image, so Dotenv cannot load stale values at all.
+// $_ENV must be populated on every request: php-fpm gives each request fresh
+// superglobals, so a value copied on the previous request is gone.
 if (SkeServiceProvider::runningOnPlatform()) {
     Environment::publish();
-    Environment::stripDotenv();
 }
 
-// Writable-path preparation is not gated on running under SKE. The directories
-// are prepared exactly when the environment names paths for them, which is what
-// makes this correct on any host, and a no-op on a normal server where
-// storage/ and bootstrap/cache/ are already writable.
-$skeUnwritablePaths = WritablePaths::boot();
+// The remaining work — stripping .env and creating writable directories — only
+// matters on cold start. A static flag skips the redundant filesystem checks
+// on every warm request.
+static $skeColdStartDone = false;
 
-if ($skeUnwritablePaths !== []) {
-    // The application is about to fail on one of these with a message that
-    // names the directory but not the reason. Saying so here — on stderr,
-    // which the adapter forwards to the platform's log — is the only chance to
-    // record that the directory could not be created at all.
-    fwrite(STDERR, sprintf(
-        "ske: could not create writable directories: %s\n",
-        implode(', ', $skeUnwritablePaths),
-    ));
+if (! $skeColdStartDone) {
+    if (SkeServiceProvider::runningOnPlatform()) {
+        Environment::stripDotenv();
+    }
+
+    $skeUnwritablePaths = WritablePaths::boot();
+
+    if ($skeUnwritablePaths !== []) {
+        fwrite(STDERR, sprintf(
+            "ske: could not create writable directories: %s\n",
+            implode(', ', $skeUnwritablePaths),
+        ));
+    }
+
+    unset($skeUnwritablePaths);
+    $skeColdStartDone = true;
 }
-
-unset($skeUnwritablePaths);

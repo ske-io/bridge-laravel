@@ -9,12 +9,6 @@ use Illuminate\Http\Request;
 use Ske\Bridge\Laravel\Queue\JobOutcome;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
 
-/**
- * The route the platform calls with a batch of queue messages.
- *
- * Answers with one outcome per record so the adapter — which holds the receipt
- * handles — can settle each message on the broker.
- */
 final readonly class QueueHandler
 {
     public function __construct(
@@ -33,7 +27,7 @@ final readonly class QueueHandler
 
         $outcomes = $this->runner->process($records, $options);
 
-        return response()->json([
+        return new JsonResponse([
             'processed' => count($outcomes),
             'outcomes' => array_map(fn (JobOutcome $o): array => $o->toArray(), $outcomes),
         ]);
