@@ -80,12 +80,19 @@ final class SkeServiceProvider extends ServiceProvider
     }
 
     /**
-     * Register the SKE mail transport so MAIL_MAILER=ske resolves correctly.
+     * Register the SKE mail transport.
      *
-     * Runs in register() — not boot() — because another provider or a
-     * middleware may trigger mail before boot() completes.  The mailer config
-     * is set first so MailManager::getConfig('ske') never returns null, then
-     * the custom transport creator is registered via extend().
+     * The mailer config entry must exist before MailManager::getConfig() is
+     * called — even when the application's config is cached — otherwise
+     * "Mailer [ske] is not defined" is thrown.  We write it to the config
+     * repository in register() rather than merging a config file, because
+     * bootstrap.php has already seeded $_ENV from the process environment
+     * by the time register() runs, and the MAIL_MAILER value is known.
+     *
+     * The custom transport creator is registered via extend() on the
+     * MailManager singleton. Because MailServiceProvider is deferred, the
+     * manager may not exist yet; we register the extension on the
+     * singleton's definition so it runs when the manager is first resolved.
      */
     private function registerMailTransport(): void
     {
@@ -97,10 +104,19 @@ final class SkeServiceProvider extends ServiceProvider
             return;
         }
 
+        // Ensure the mailer config entry exists. This survives even when
+        // config:cache has already been loaded because we write directly
+        // to the in-memory repository.
         $this->app['config']->set('mail.mailers.ske', ['transport' => 'ske']);
 
-        $this->app->afterResolving(MailManager::class, function (MailManager $manager) use ($endpoint, $serviceId, $token): void {
+        // Register the transport creator on the deferred MailManager singleton.
+        // We override the singleton definition to wrap the original factory
+        // with our extend() call, so the creator is present from the moment
+        // the manager is first resolved — no timing dependency on boot().
+        $this->app->extend('mail.manager', function (MailManager $manager) use ($endpoint, $serviceId, $token): MailManager {
             $manager->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
+
+            return $manager;
         });
     }
 
