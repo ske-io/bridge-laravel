@@ -6,6 +6,7 @@ namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
+use Illuminate\Mail\MailManager;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -17,6 +18,7 @@ use Ske\Bridge\Laravel\Handlers\SchedulerHandler;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
+use Ske\Bridge\Laravel\Mail\SkeMailTransport;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
 use Ske\Bridge\Laravel\Runtime\Environment;
 
@@ -57,6 +59,7 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->trustPlatformProxy();
         $this->registerRoutes();
+        $this->registerMailTransport();
     }
 
     /**
@@ -74,6 +77,23 @@ final class SkeServiceProvider extends ServiceProvider
         $kernel = $this->app->make(HttpKernel::class);
         $kernel->prependMiddleware(TrustPlatformProxy::class);
         $kernel->pushMiddleware(CorrelateRequests::class);
+    }
+
+    private function registerMailTransport(): void
+    {
+        $endpoint = Environment::get('SKE_MAIL_ENDPOINT');
+        $serviceId = Environment::get('SKE_MAIL_SERVICE_ID');
+        $token = Environment::get('SKE_MAIL_TOKEN');
+
+        if (! $endpoint || ! $serviceId || ! $token) {
+            return;
+        }
+
+        $this->app->resolving(MailManager::class, function (MailManager $manager) use ($endpoint, $serviceId, $token): void {
+            $manager->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
+        });
+
+        config(['mail.mailers.ske' => ['transport' => 'ske']]);
     }
 
     private function registerRoutes(): void
