@@ -31,6 +31,12 @@ final class SkeMailTransport extends AbstractTransport
 
     protected function doSend(SentMessage $message): void
     {
+        if ($this->endpoint === '' || $this->token === '') {
+            Log::debug('SKE mail transport: no endpoint configured, mail silently dropped.');
+
+            return;
+        }
+
         try {
             $email = MessageConverter::toEmail($message->getOriginalMessage());
             $rawAttachments = $this->collectAttachments($email);

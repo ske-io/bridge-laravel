@@ -6,7 +6,6 @@ namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
-use Illuminate\Mail\MailManager;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -80,41 +79,27 @@ final class SkeServiceProvider extends ServiceProvider
     }
 
     /**
-     * Register the SKE mail transport.
+     * Always register the 'ske' mailer on the platform so MAIL_MAILER=ske
+     * never crashes the app — even if the service env vars are absent.
      *
-     * The mailer config entry must exist before MailManager::getConfig() is
-     * called — even when the application's config is cached — otherwise
-     * "Mailer [ske] is not defined" is thrown.  We write it to the config
-     * repository in register() rather than merging a config file, because
-     * bootstrap.php has already seeded $_ENV from the process environment
-     * by the time register() runs, and the MAIL_MAILER value is known.
-     *
-     * The custom transport creator is registered via extend() on the
-     * MailManager singleton. Because MailServiceProvider is deferred, the
-     * manager may not exist yet; we register the extension on the
-     * singleton's definition so it runs when the manager is first resolved.
+     * The config entry and the transport creator are registered
+     * unconditionally. SkeMailTransport reads the credentials from the
+     * process environment at send-time, not at registration-time, so a
+     * missing credential silently drops the mail (fire-and-forget) rather
+     * than crashing the app with "Mailer [ske] is not defined."
      */
     private function registerMailTransport(): void
     {
-        $endpoint = Environment::get('SKE_MAIL_ENDPOINT');
-        $serviceId = Environment::get('SKE_MAIL_SERVICE_ID');
-        $token = Environment::get('SKE_MAIL_TOKEN');
-
-        if (! $endpoint || ! $serviceId || ! $token) {
-            return;
-        }
-
-        // Ensure the mailer config entry exists. This survives even when
-        // config:cache has already been loaded because we write directly
-        // to the in-memory repository.
         $this->app['config']->set('mail.mailers.ske', ['transport' => 'ske']);
 
-        // Register the transport creator on the deferred MailManager singleton.
-        // We override the singleton definition to wrap the original factory
-        // with our extend() call, so the creator is present from the moment
-        // the manager is first resolved — no timing dependency on boot().
-        $this->app->extend('mail.manager', function (MailManager $manager) use ($endpoint, $serviceId, $token): MailManager {
-            $manager->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
+        $this->app->extend('mail.manager', function ($manager) {
+            $manager->extend('ske', function () {
+                return new SkeMailTransport(
+                    Environment::get('SKE_MAIL_ENDPOINT') ?? '',
+                    Environment::get('SKE_MAIL_SERVICE_ID') ?? '',
+                    Environment::get('SKE_MAIL_TOKEN') ?? '',
+                );
+            });
 
             return $manager;
         });
