@@ -89,11 +89,10 @@ final class SkeServiceProvider extends ServiceProvider
             return;
         }
 
-        $this->app->resolving(MailManager::class, function (MailManager $manager) use ($endpoint, $serviceId, $token): void {
-            $manager->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
-        });
-
         config(['mail.mailers.ske' => ['transport' => 'ske']]);
+
+        $this->app->make(MailManager::class)
+            ->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
     }
 
     private function registerRoutes(): void
