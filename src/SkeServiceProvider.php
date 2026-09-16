@@ -39,6 +39,7 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->configureLogging();
         $this->configureAwsCredentials();
+        $this->registerMailTransport();
 
         $this->app->singleton(
             CommandRunner::class,
@@ -59,7 +60,6 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->trustPlatformProxy();
         $this->registerRoutes();
-        $this->registerMailTransport();
     }
 
     /**
@@ -79,6 +79,14 @@ final class SkeServiceProvider extends ServiceProvider
         $kernel->pushMiddleware(CorrelateRequests::class);
     }
 
+    /**
+     * Register the SKE mail transport so MAIL_MAILER=ske resolves correctly.
+     *
+     * Runs in register() — not boot() — because another provider or a
+     * middleware may trigger mail before boot() completes.  The mailer config
+     * is set first so MailManager::getConfig('ske') never returns null, then
+     * the custom transport creator is registered via extend().
+     */
     private function registerMailTransport(): void
     {
         $endpoint = Environment::get('SKE_MAIL_ENDPOINT');
@@ -89,10 +97,11 @@ final class SkeServiceProvider extends ServiceProvider
             return;
         }
 
-        config(['mail.mailers.ske' => ['transport' => 'ske']]);
+        $this->app['config']->set('mail.mailers.ske', ['transport' => 'ske']);
 
-        $this->app->make(MailManager::class)
-            ->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
+        $this->app->afterResolving(MailManager::class, function (MailManager $manager) use ($endpoint, $serviceId, $token): void {
+            $manager->extend('ske', fn (): SkeMailTransport => new SkeMailTransport($endpoint, $serviceId, $token));
+        });
     }
 
     private function registerRoutes(): void
