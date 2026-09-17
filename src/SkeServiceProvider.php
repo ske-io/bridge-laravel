@@ -17,7 +17,6 @@ use Ske\Bridge\Laravel\Handlers\SchedulerHandler;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
-use Ske\Bridge\Laravel\Mail\SkeMailTransport;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
 use Ske\Bridge\Laravel\Runtime\Environment;
 
@@ -38,7 +37,6 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->configureLogging();
         $this->configureAwsCredentials();
-        $this->registerMailTransport();
 
         $this->app->singleton(
             CommandRunner::class,
@@ -76,33 +74,6 @@ final class SkeServiceProvider extends ServiceProvider
         $kernel = $this->app->make(HttpKernel::class);
         $kernel->prependMiddleware(TrustPlatformProxy::class);
         $kernel->pushMiddleware(CorrelateRequests::class);
-    }
-
-    /**
-     * Always register the 'ske' mailer on the platform so MAIL_MAILER=ske
-     * never crashes the app — even if the service env vars are absent.
-     *
-     * The config entry and the transport creator are registered
-     * unconditionally. SkeMailTransport reads the credentials from the
-     * process environment at send-time, not at registration-time, so a
-     * missing credential silently drops the mail (fire-and-forget) rather
-     * than crashing the app with "Mailer [ske] is not defined."
-     */
-    private function registerMailTransport(): void
-    {
-        $this->app['config']->set('mail.mailers.ske', ['transport' => 'ske']);
-
-        $this->app->extend('mail.manager', function ($manager) {
-            $manager->extend('ske', function () {
-                return new SkeMailTransport(
-                    Environment::get('SKE_MAIL_ENDPOINT') ?? '',
-                    Environment::get('SKE_MAIL_SERVICE_ID') ?? '',
-                    Environment::get('SKE_MAIL_TOKEN') ?? '',
-                );
-            });
-
-            return $manager;
-        });
     }
 
     private function registerRoutes(): void
