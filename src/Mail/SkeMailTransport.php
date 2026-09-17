@@ -31,18 +31,7 @@ final class SkeMailTransport extends AbstractTransport
 
     protected function doSend(SentMessage $message): void
     {
-        Log::info('SKE mail transport: sending', [
-            'endpoint' => $this->endpoint,
-            'service_id' => $this->serviceId,
-            'has_token' => $this->token !== '',
-        ]);
-
         if ($this->endpoint === '' || $this->token === '') {
-            Log::error('SKE mail transport: no endpoint or token configured, mail dropped.', [
-                'endpoint' => $this->endpoint,
-                'service_id' => $this->serviceId,
-            ]);
-
             return;
         }
 
@@ -88,15 +77,12 @@ final class SkeMailTransport extends AbstractTransport
             $response = $this->apiRequest()->post($this->endpoint, $payload);
 
             if ($response->failed()) {
-                Log::error('SKE mail transport: API returned '.$response->status(), [
-                    'endpoint' => $this->endpoint,
+                Log::error('SKE mail transport: ingest returned '.$response->status(), [
                     'body' => $response->body(),
                 ]);
-            } else {
-                Log::info('SKE mail transport: delivered', ['id' => $response->json('data.id')]);
             }
         } catch (\Throwable $e) {
-            Log::warning('SKE mail transport failed: '.$e->getMessage());
+            Log::error('SKE mail transport: '.$e->getMessage());
         }
     }
 
