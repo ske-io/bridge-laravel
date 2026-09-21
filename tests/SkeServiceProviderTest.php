@@ -9,6 +9,7 @@ use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
@@ -239,7 +240,7 @@ it('teaches the HTTP kernel to trust the platform proxy and correlate requests',
 
         $app = applicationFor();
         $kernel = fakeHttpKernel();
-        $app->instance(HttpKernel::class, $kernel);
+        $app->instance(HttpKernelContract::class, $kernel);
 
         registerProvider($app)->boot();
 
