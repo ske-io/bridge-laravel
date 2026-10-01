@@ -6,10 +6,12 @@ use Illuminate\Config\Repository;
 use Illuminate\Console\Command;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
@@ -18,6 +20,7 @@ use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
+use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 use Ske\Bridge\Laravel\SkeServiceProvider;
 
 /**
@@ -156,6 +159,31 @@ it('registers the three internal routes the adapter calls', function () {
             ->and($routes['__ske/cli'][0])->toContain('POST')
             ->and($routes['__ske/queue'][0])->toContain('POST')
             ->and($routes['__ske/scheduler'][0])->toContain('POST');
+    });
+});
+
+it('drives maintenance mode from the platform instead of a file', function () {
+    withPlatform(present: true, callback: function () {
+        $app = applicationFor();
+
+        registerProvider($app);
+
+        expect($app->make(MaintenanceMode::class))->toBeInstanceOf(PlatformMaintenanceMode::class)
+            ->and($app->isShared(MaintenanceMode::class))->toBeTrue();
+    });
+});
+
+it('keeps the adapter routes and the readiness probe open during maintenance', function () {
+    withPlatform(present: true, callback: function () {
+        PreventRequestsDuringMaintenance::flushState();
+        $app = applicationFor();
+
+        registerProvider($app)->boot();
+
+        expect((new PreventRequestsDuringMaintenance($app))->getExcludedPaths())
+            ->toContain('__ske/*', 'up');
+
+        PreventRequestsDuringMaintenance::flushState();
     });
 });
 

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -19,6 +21,7 @@ use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
 use Ske\Bridge\Laravel\Runtime\Environment;
+use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 
 /**
  * Wires the four things a deployment needs: HTTP, queue, CLI and scheduler.
@@ -37,6 +40,8 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->configureLogging();
         $this->configureAwsCredentials();
+
+        $this->app->singleton(MaintenanceMode::class, fn (): MaintenanceMode => new PlatformMaintenanceMode);
 
         $this->app->singleton(
             CommandRunner::class,
@@ -57,6 +62,11 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->trustPlatformProxy();
         $this->registerRoutes();
+
+        // The adapter delivers queue jobs, scheduler runs and CLI commands
+        // through these routes, and probes /up for readiness; maintenance
+        // only closes the application to its visitors.
+        PreventRequestsDuringMaintenance::except(['__ske/*', 'up']);
     }
 
     /**
