@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;

@@ -6,7 +6,6 @@ use Illuminate\Config\Repository;
 use Illuminate\Console\Command;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
-use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bus\PendingDispatch;
@@ -240,7 +239,7 @@ it('teaches the HTTP kernel to trust the platform proxy and correlate requests',
 
         $app = applicationFor();
         $kernel = fakeHttpKernel();
-        $app->instance(HttpKernelContract::class, $kernel);
+        $app->instance(HttpKernel::class, $kernel);
 
         registerProvider($app)->boot();
 
