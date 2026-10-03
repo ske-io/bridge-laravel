@@ -13,9 +13,10 @@ use Throwable;
  * Runs the messages the platform delivered in one invocation.
  *
  * Options come from the deployment's queue configuration rather than the
- * framework's defaults: `ske.yml` defines timeout, memory and tries, the API
- * validates them and the adapter carries them, and before this they reached the
- * worker as nothing at all.
+ * framework's defaults: the environment's queue settings define timeout and
+ * memory, the API validates them and the adapter carries them, and before this
+ * they reached the worker as nothing at all. Tries and backoff are applied when
+ * the adapter sends them; the queue settings don't define them today.
  */
 final readonly class QueueRunner
 {

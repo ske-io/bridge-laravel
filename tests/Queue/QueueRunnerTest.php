@@ -58,9 +58,9 @@ it('returns one outcome per record, in order', function () {
 });
 
 it('carries the deployment queue settings into the worker', function () {
-    // ske.yml defines these, the API validates them and the adapter forwards
-    // them. The previous bridge constructed a bare WorkerOptions, so every one
-    // of them reached the worker as a framework default.
+    // The adapter forwards these from the environment's queue settings. The
+    // previous bridge constructed a bare WorkerOptions, so every one of them
+    // reached the worker as a framework default.
     $worker = new RecordingWorker;
 
     makeRunner($worker)->process(
