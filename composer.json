@@ -32,6 +32,9 @@
             "Ske\\Bridge\\Laravel\\Tests\\": "tests/"
         }
     },
+    "suggest": {
+        "aws/aws-sdk-php": "Required on AWS for the default ske queue connection, which sends jobs to SQS."
+    },
     "minimum-stability": "stable",
     "config": {
         "allow-plugins": {

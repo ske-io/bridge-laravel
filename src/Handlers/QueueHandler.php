@@ -19,7 +19,7 @@ final readonly class QueueHandler
     {
         $payload = $request->json()->all();
 
-        /** @var list<array{message_id?: string, body?: string, attempts?: int}> $records */
+        /** @var list<array{message_id?: string, body?: string, queue?: string, attempts?: int}> $records */
         $records = is_array($payload['records'] ?? null) ? $payload['records'] : [];
 
         /** @var array{timeout?: int, memory?: int, tries?: int, backoff?: int} $options */

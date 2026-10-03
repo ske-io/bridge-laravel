@@ -12,6 +12,10 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Queue\QueueManager;
+use Illuminate\Queue\Worker;
+use Illuminate\Queue\WorkerOptions;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
@@ -19,7 +23,10 @@ use Ske\Bridge\Laravel\Console\CommandRunner;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
+use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
+use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
+use Ske\Bridge\Laravel\Queue\SqsConnector;
 use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 use Ske\Bridge\Laravel\SkeServiceProvider;
 
@@ -256,6 +263,112 @@ it('does not invent credentials for a connection that has none', function () {
         registerProvider($app);
 
         expect($app->make('config')->has('queue.connections.sqs.key'))->toBeFalse();
+    });
+});
+
+// --- the platform's queue connection ------------------------------------
+
+it('connects the ske queue to Cloud Tasks on GCP', function () {
+    withPlatform(present: true, callback: function () {
+        $_SERVER['SKE_PROVIDER'] = 'gcp';
+        $_SERVER['SKE_GCP_PROJECT'] = 'acme-prod';
+        $_SERVER['SKE_REGION'] = 'europe-west1';
+        $_SERVER['SKE_QUEUE_PREFIX'] = 'ske-shop-prod--';
+
+        $app = applicationFor();
+        $app->singleton('queue', fn ($app) => new QueueManager($app));
+
+        registerProvider($app);
+
+        expect($app->make('config')->get('queue.connections.ske'))->toBe([
+            'driver' => CloudTasksConnector::DRIVER,
+            'project' => 'acme-prod',
+            'location' => 'europe-west1',
+            'prefix' => 'ske-shop-prod--',
+            'queue' => 'default',
+            'after_commit' => false,
+        ]);
+
+        $queue = $app->make('queue')->connection('ske');
+
+        expect($queue)->toBeInstanceOf(CloudTasksQueue::class)
+            ->and($queue->queuePath('emails'))->toBe('projects/acme-prod/locations/europe-west1/queues/ske-shop-prod--emails');
+    });
+});
+
+it('puts a job released on GCP back on its Cloud Tasks queue', function () {
+    withPlatform(present: true, callback: function () {
+        $_SERVER['SKE_PROVIDER'] = 'gcp';
+        $_SERVER['SKE_GCP_PROJECT'] = 'acme-prod';
+        $_SERVER['SKE_REGION'] = 'europe-west1';
+        $_SERVER['SKE_QUEUE_PREFIX'] = 'ske-shop-prod--';
+
+        $http = new HttpFactory;
+        $http->fake([
+            'http://metadata.google.internal/*' => $http->response(['access_token' => 't', 'expires_in' => 3599]),
+            'https://cloudtasks.googleapis.com/*' => $http->response(['name' => 'projects/p/locations/l/queues/q/tasks/9']),
+        ]);
+
+        $app = applicationFor();
+        $app->instance(HttpFactory::class, $http);
+        $app->singleton('queue', fn ($app) => new QueueManager($app));
+        $app->instance(Worker::class, new class extends Worker
+        {
+            public function __construct() {}
+
+            public function process($connectionName, $job, WorkerOptions $options): void
+            {
+                $job->release(60);
+            }
+        });
+
+        registerProvider($app);
+
+        $outcome = $app->make(QueueRunner::class)->process([
+            ['message_id' => 'task-1', 'body' => '{"uuid":"u-1"}', 'queue' => 'ske-shop-prod--emails'],
+        ])[0];
+
+        $requests = $http->recorded(fn ($request): bool => str_ends_with($request->url(), '/tasks'));
+
+        expect($outcome->deleted)->toBeTrue()
+            ->and($requests)->toHaveCount(1)
+            ->and($requests->first()[0]->url())->toEndWith('/queues/ske-shop-prod--emails/tasks');
+    });
+});
+
+it('connects the ske queue to the environment SQS queues on AWS', function () {
+    withPlatform(present: true, callback: function () {
+        $_SERVER['SKE_PROVIDER'] = 'aws';
+        $_SERVER['SQS_PREFIX'] = 'https://sqs.eu-west-1.amazonaws.com/123456789012';
+        $_SERVER['SQS_QUEUE'] = 'default';
+        $_SERVER['SQS_SUFFIX'] = '--ske-shop-prod';
+        $_SERVER['AWS_REGION'] = 'eu-west-1';
+
+        $app = applicationFor();
+
+        registerProvider($app);
+
+        expect($app->make('config')->get('queue.connections.ske'))->toBe([
+            'driver' => SqsConnector::DRIVER,
+            'prefix' => 'https://sqs.eu-west-1.amazonaws.com/123456789012',
+            'queue' => 'default',
+            'suffix' => '--ske-shop-prod',
+            'region' => 'eu-west-1',
+            'after_commit' => false,
+        ]);
+    });
+});
+
+it('defines no ske queue when the deploy names no provider', function () {
+    withPlatform(present: true, callback: function () {
+        unset($_SERVER['SKE_PROVIDER']);
+        putenv('SKE_PROVIDER');
+
+        $app = applicationFor();
+
+        registerProvider($app);
+
+        expect($app->make('config')->has('queue.connections.ske'))->toBeFalse();
     });
 });
 

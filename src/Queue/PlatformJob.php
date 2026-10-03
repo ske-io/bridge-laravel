@@ -7,6 +7,7 @@ namespace Ske\Bridge\Laravel\Queue;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Queue\Job as JobContract;
 use Illuminate\Queue\Jobs\Job;
+use Throwable;
 
 /**
  * One queue message delivered by the platform rather than fetched from a broker.
@@ -16,15 +17,19 @@ use Illuminate\Queue\Jobs\Job;
  * deleted, released, failed — instead of acting on the queue itself, and the
  * adapter carries the decision out.
  *
- * The previous bridge built a real SqsJob and filled its receipt handle with the
- * message id, which is not one. Deletion was rejected, so every job that
- * succeeded was redelivered until the queue gave up on it.
+ * Failing goes through Laravel's own path: the job's failed() hook, the
+ * JobFailed event, and (in QueueRunner) the failed_jobs record. A failed job is
+ * finished, and the adapter acknowledges it.
  */
 final class PlatformJob extends Job implements JobContract
 {
     private ?int $releaseDelay = null;
 
+    private ?Throwable $failure = null;
+
     private ?string $error = null;
+
+    private bool $requeued = false;
 
     public function __construct(
         Container $container,
@@ -49,29 +54,47 @@ final class PlatformJob extends Job implements JobContract
         return $this->payload;
     }
 
+    /**
+     * The platform's delivery count for this message, plus the attempts made
+     * before it was put back as a new message (see QueueRunner), which the
+     * payload carries the way Laravel's Redis queue does.
+     */
     public function attempts(): int
     {
-        return $this->attempts;
+        $decoded = json_decode($this->payload, true);
+        $earlier = is_array($decoded) && is_int($decoded['attempts'] ?? null) ? $decoded['attempts'] : 0;
+
+        return $this->attempts + $earlier;
     }
 
     /**
-     * The parent's fail() dispatches events, calls the job class's failed()
-     * hook, then deletes the job. None of that is appropriate here:
+     * Laravel's failure handling, keeping the exception for the failed_jobs
+     * record and its message for the adapter's log.
      *
-     *  - Event dispatch needs a booted application, and this runs inside a
-     *    catch block where the worker already reported the failure.
-     *  - Deletion would mark the outcome as "deleted", telling the adapter to
-     *    acknowledge the message — the opposite of what a failure should do.
-     *
-     * Recording the failure and its message is all the adapter needs.
+     * @param  Throwable|null  $e
      */
     public function fail($e = null): void
     {
-        $this->markAsFailed();
-
-        if ($e instanceof \Throwable) {
+        if ($e instanceof Throwable) {
+            $this->failure = $e;
             $this->error = $e->getMessage();
         }
+
+        parent::fail($e);
+    }
+
+    public function failure(): ?Throwable
+    {
+        return $this->failure;
+    }
+
+    /**
+     * Keeps an error that did not fail the job — one the worker rethrew after
+     * releasing it — for the adapter's log.
+     */
+    public function recordError(Throwable $e): void
+    {
+        $this->error ??= $e->getMessage();
     }
 
     public function release($delay = 0): void
@@ -92,16 +115,29 @@ final class PlatformJob extends Job implements JobContract
     }
 
     /**
-     * The outcome the adapter needs in order to settle this message.
+     * The released job was put back on its queue as a new message, so this one
+     * is done with.
+     */
+    public function markRequeued(): void
+    {
+        $this->requeued = true;
+    }
+
+    /**
+     * The outcome the adapter needs in order to settle this message: failed
+     * (finished, recorded), released (deliver again) or deleted (done).
      */
     public function outcome(): JobOutcome
     {
+        $failed = $this->hasFailed();
+        $released = ! $failed && $this->isReleased() && ! $this->requeued;
+
         return new JobOutcome(
             messageId: $this->messageId,
-            deleted: $this->isDeleted() && ! $this->isReleased(),
-            released: $this->isReleased(),
-            releaseDelay: $this->releaseDelay,
-            failed: $this->hasFailed(),
+            deleted: ! $failed && ! $released && ($this->isDeleted() || $this->requeued),
+            released: $released,
+            releaseDelay: $released ? $this->releaseDelay : null,
+            failed: $failed,
             error: $this->error,
         );
     }

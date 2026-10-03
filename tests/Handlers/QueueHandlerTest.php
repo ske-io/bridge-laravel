@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Events\Dispatcher as EventsContract;
+use Illuminate\Events\Dispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Worker;
 use Illuminate\Queue\WorkerOptions;
@@ -24,6 +26,9 @@ final class QueueHandlerWorker extends Worker
         }
     }
 }
+
+/** A job handler without a failed() hook. */
+final class QueueHandlerNoHook {}
 
 /** @param array<string, mixed> $payload */
 function queueRequest(array $payload): Request
@@ -87,10 +92,12 @@ it('includes error details for failed jobs', function () {
     $worker = new QueueHandlerWorker;
     $worker->onProcess = fn (PlatformJob $job) => $job->fail(new RuntimeException('Connection refused'));
 
-    $handler = new QueueHandler(new QueueRunner($worker, new Container));
+    $container = new Container;
+    $container->instance(EventsContract::class, new Dispatcher($container));
+    $handler = new QueueHandler(new QueueRunner($worker, $container));
 
     $response = $handler(queueRequest([
-        'records' => [['message_id' => 'msg-1', 'body' => '{}']],
+        'records' => [['message_id' => 'msg-1', 'body' => '{"uuid":"u-1","job":"QueueHandlerNoHook@handle","data":{}}']],
     ]));
 
     $outcome = $response->getData(true)['outcomes'][0];

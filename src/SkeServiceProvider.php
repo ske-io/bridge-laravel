@@ -6,8 +6,11 @@ namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Foundation\MaintenanceMode;
+use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Queue\QueueManager;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -19,7 +22,10 @@ use Ske\Bridge\Laravel\Handlers\SchedulerHandler;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
+use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
+use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
+use Ske\Bridge\Laravel\Queue\SqsConnector;
 use Ske\Bridge\Laravel\Runtime\Environment;
 use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 
@@ -40,6 +46,7 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->configureLogging();
         $this->configureAwsCredentials();
+        $this->configureQueueConnection();
 
         $this->app->singleton(MaintenanceMode::class, fn (): MaintenanceMode => new PlatformMaintenanceMode);
 
@@ -48,10 +55,7 @@ final class SkeServiceProvider extends ServiceProvider
             fn ($app): CommandRunner => new CommandRunner($app->make(ConsoleKernel::class)),
         );
 
-        $this->app->singleton(
-            QueueRunner::class,
-            fn ($app): QueueRunner => new QueueRunner($app->make(Worker::class), $app),
-        );
+        $this->app->singleton(QueueRunner::class, fn ($app): QueueRunner => $this->queueRunner($app));
     }
 
     public function boot(): void
@@ -126,6 +130,72 @@ final class SkeServiceProvider extends ServiceProvider
                 config(["{$path}.key" => null, "{$path}.secret" => null]);
             }
         }
+    }
+
+    /**
+     * The runner for delivered jobs: it records failures with the application's
+     * failed job provider, and on GCP puts a released job back on its Cloud
+     * Tasks queue so its delay is kept. It knows each provider's queue naming
+     * so a job reports the application's queue name.
+     */
+    private function queueRunner(Application $app): QueueRunner
+    {
+        $provider = Environment::get('SKE_PROVIDER');
+        $requeue = $provider === 'gcp' ? $app->make('queue')->connection('ske') : null;
+
+        return new QueueRunner(
+            worker: $app->make(Worker::class),
+            container: $app,
+            failer: $app->bound('queue.failer') ? $app->make('queue.failer') : null,
+            requeue: $requeue instanceof CloudTasksQueue ? $requeue : null,
+            queuePrefix: $provider === 'gcp' ? (Environment::get('SKE_QUEUE_PREFIX') ?? '') : '',
+            queueSuffix: $provider === 'aws' ? (Environment::get('SQS_SUFFIX') ?? '') : '',
+        );
+    }
+
+    /**
+     * The `ske` connection: the platform's own queue, which the deploy sets as
+     * QUEUE_CONNECTION and which QueueRunner names when it runs a delivered
+     * job. It sends to SQS on AWS and to Cloud Tasks on GCP, configured from the
+     * variables each provider's deploy sets. SQS needs the AWS SDK, which the
+     * bridge does not require; without it the connection refuses with what to
+     * do.
+     */
+    private function configureQueueConnection(): void
+    {
+        $connection = match (Environment::get('SKE_PROVIDER')) {
+            'aws' => [
+                'driver' => SqsConnector::DRIVER,
+                'prefix' => Environment::get('SQS_PREFIX'),
+                'queue' => Environment::get('SQS_QUEUE') ?? 'default',
+                'suffix' => Environment::get('SQS_SUFFIX'),
+                'region' => Environment::get('AWS_REGION') ?? Environment::get('AWS_DEFAULT_REGION'),
+                'after_commit' => false,
+            ],
+            'gcp' => [
+                'driver' => CloudTasksConnector::DRIVER,
+                'project' => Environment::get('SKE_GCP_PROJECT'),
+                'location' => Environment::get('SKE_REGION'),
+                'prefix' => Environment::get('SKE_QUEUE_PREFIX'),
+                'queue' => 'default',
+                'after_commit' => false,
+            ],
+            default => null,
+        };
+
+        if ($connection === null) {
+            return;
+        }
+
+        config(['queue.connections.ske' => $connection]);
+
+        $this->callAfterResolving('queue', function (QueueManager $manager): void {
+            $manager->addConnector(
+                CloudTasksConnector::DRIVER,
+                fn (): CloudTasksConnector => new CloudTasksConnector($this->app->make(HttpFactory::class)),
+            );
+            $manager->addConnector(SqsConnector::DRIVER, fn (): SqsConnector => new SqsConnector);
+        });
     }
 
     /**
