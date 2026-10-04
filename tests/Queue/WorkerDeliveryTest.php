@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Bus\Dispatcher as BusDispatcher;
 use Illuminate\Bus\Queueable;
+use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Bus\Dispatcher as BusDispatcherContract;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -16,6 +17,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Queue\Failed\DatabaseUuidFailedJobProvider;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\QueueManager;
@@ -62,6 +64,35 @@ final class DeliveredJob implements ShouldQueue
     }
 }
 
+/** A job that runs longer than its queue allows. */
+final class SlowJob implements ShouldQueue
+{
+    use InteractsWithQueue, Queueable;
+
+    /** @var list<string> */
+    public static array $log = [];
+
+    public int $tries = 2;
+
+    public int $backoff = 30;
+
+    public function __construct(public bool $failOnTimeout = false, public ?int $timeout = null) {}
+
+    public function handle(): void
+    {
+        self::$log[] = 'handle';
+
+        sleep(10);
+
+        self::$log[] = 'finished';
+    }
+
+    public function failed(Throwable $e): void
+    {
+        self::$log[] = 'failed: '.$e->getMessage();
+    }
+}
+
 /**
  * The application around one delivery: the real Worker, an events dispatcher
  * that records JobFailed, a failed_jobs table, and the Cloud Tasks queue on a
@@ -78,6 +109,9 @@ final class Delivery
     /** @var list<JobFailed> */
     public array $failedEvents = [];
 
+    /** @var list<JobTimedOut> */
+    public array $timedOutEvents = [];
+
     /** @var list<self> */
     public static array $open = [];
 
@@ -92,9 +126,14 @@ final class Delivery
         $events->listen(JobFailed::class, function (JobFailed $event): void {
             $this->failedEvents[] = $event;
         });
+        $events->listen(JobTimedOut::class, function (JobTimedOut $event): void {
+            $this->timedOutEvents[] = $event;
+        });
         $this->app->instance('events', $events);
         $this->app->instance(EventsContract::class, $events);
         $this->app->instance(BusDispatcherContract::class, new BusDispatcher($this->app));
+        // Laravel reads the failed job settings when a timed-out job fails.
+        $this->app->instance('config', new ConfigRepository(['queue' => ['failed' => []]]));
 
         $this->db = new Capsule;
         $this->db->addConnection(['driver' => 'sqlite', 'database' => ':memory:']);
@@ -117,6 +156,7 @@ final class Delivery
         ]);
 
         DeliveredJob::$log = [];
+        SlowJob::$log = [];
         self::$open[] = $this;
     }
 
@@ -139,7 +179,7 @@ final class Delivery
     }
 
     /** The body of a job as Cloud Tasks would push it. */
-    public function dispatch(DeliveredJob $job): string
+    public function dispatch(DeliveredJob|SlowJob $job): string
     {
         $this->queue()->push($job, '', 'emails');
 
@@ -161,8 +201,12 @@ final class Delivery
         )->map(fn (array $pair): Request => $pair[0])->all());
     }
 
-    /** Runs one delivered record, as the adapter hands it over. */
-    public function deliver(string $body, int $attempts, bool $requeue = true): JobOutcome
+    /**
+     * Runs one delivered record, as the adapter hands it over.
+     *
+     * @param  array{timeout?: int, tries?: int, backoff?: int}  $options
+     */
+    public function deliver(string $body, int $attempts, bool $requeue = true, array $options = []): JobOutcome
     {
         $worker = new Worker(new QueueManager($this->app), $this->app->make('events'), silentHandler(), fn (): bool => false);
 
@@ -179,7 +223,7 @@ final class Delivery
             'body' => $body,
             'queue' => 'ske-shop-prod--emails',
             'attempts' => $attempts,
-        ]])[0];
+        ]], $options)[0];
     }
 
     /** @return list<array<mixed>> */
@@ -314,4 +358,56 @@ it('leaves a released job to Cloud Tasks\' own retry when putting it back fails'
 
     expect($outcome->released)->toBeTrue()
         ->and($outcome->deleted)->toBeFalse();
+});
+
+it('stops a job that runs past the queue timeout and puts it back for another attempt', function () {
+    // A queue timeout of 2 seconds leaves the job 1: the function still has
+    // time to put the job back and answer before the platform stops it.
+    $delivery = new Delivery;
+    $body = $delivery->dispatch(new SlowJob);
+
+    $started = microtime(true);
+    $outcome = $delivery->deliver($body, attempts: 1, options: ['timeout' => 2]);
+
+    expect(microtime(true) - $started)->toBeLessThan(2)
+        ->and(SlowJob::$log)->toBe(['handle'])
+        ->and($delivery->timedOutEvents)->toHaveCount(1)
+        ->and($outcome->error)->toBe(SlowJob::class.' has timed out.')
+        ->and($delivery->tasksCreated())->toHaveCount(2)
+        ->and($outcome->deleted)->toBeTrue()
+        ->and($delivery->failedJobs())->toBe([]);
+});
+
+it('fails a job that runs out of time on its last attempt', function () {
+    $delivery = new Delivery;
+    $outcome = $delivery->deliver($delivery->dispatch(new SlowJob), attempts: 2, options: ['timeout' => 2]);
+
+    expect(SlowJob::$log)->toBe(['handle', 'failed: '.SlowJob::class.' has timed out.'])
+        ->and($outcome->failed)->toBeTrue()
+        ->and($delivery->failedJobs())->toHaveCount(1);
+});
+
+it('fails a job on its first timeout when it fails on timeout', function () {
+    $delivery = new Delivery;
+    $outcome = $delivery->deliver($delivery->dispatch(new SlowJob(failOnTimeout: true)), attempts: 1, options: ['timeout' => 2]);
+
+    expect($outcome->failed)->toBeTrue()
+        ->and($delivery->failedJobs())->toHaveCount(1)
+        ->and($delivery->tasksCreated())->toHaveCount(1);
+});
+
+it('lets a job lower its timeout but not raise it past the queue\'s', function () {
+    $delivery = new Delivery;
+
+    $started = microtime(true);
+    $delivery->deliver($delivery->dispatch(new SlowJob(timeout: 1)), attempts: 1, options: ['timeout' => 60]);
+    $lowered = microtime(true) - $started;
+
+    $started = microtime(true);
+    $delivery->deliver($delivery->dispatch(new SlowJob(timeout: 600)), attempts: 1, options: ['timeout' => 2]);
+    $capped = microtime(true) - $started;
+
+    expect($lowered)->toBeLessThan(2)
+        ->and($capped)->toBeLessThan(2)
+        ->and($delivery->timedOutEvents)->toHaveCount(2);
 });

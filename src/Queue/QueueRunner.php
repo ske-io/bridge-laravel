@@ -6,8 +6,10 @@ namespace Ske\Bridge\Laravel\Queue;
 
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Queue\Failed\FailedJobProviderInterface;
 use Illuminate\Queue\ManuallyFailedException;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Queue\Worker;
 use Illuminate\Queue\WorkerOptions;
 use Throwable;
@@ -15,11 +17,19 @@ use Throwable;
 /**
  * Runs the messages the platform delivered in one invocation.
  *
- * Options come from the deployment's queue configuration rather than the
- * framework's defaults: the environment's queue settings define timeout and
- * memory, the API validates them and the adapter carries them. Tries and
- * backoff are applied when the adapter sends them; the queue settings don't
- * define them today.
+ * Options come from the environment's queue settings rather than the
+ * framework's defaults: the API sets them on the queue's function and the
+ * adapter sends them with each batch. Each is optional, and the worker's own
+ * default applies to one that is missing.
+ *
+ * The timeout sent is the queue's, which is also how long the platform lets
+ * the function run. The job timeout is kept TIMEOUT_MARGIN seconds below it
+ * (half the queue's timeout when that is shorter), and a job's own `$timeout`
+ * can lower it but not raise it past that. A job that runs out of time is
+ * stopped with a TimeoutExceededException and then failed or released as
+ * `queue:work` would, so its outcome still reaches the platform before the
+ * function is stopped. Stopping a job needs the pcntl extension; without it
+ * the platform's own timeout is the only limit.
  *
  * A job that fails for good is recorded with the failed job provider, as
  * `queue:work` does. A released job goes back to the platform: on a queue that
@@ -28,6 +38,13 @@ use Throwable;
  */
 final readonly class QueueRunner
 {
+    /**
+     * Seconds kept between the job timeout and the queue's timeout, for
+     * failing or releasing a job that ran out of time and answering the
+     * platform.
+     */
+    public const int TIMEOUT_MARGIN = 5;
+
     public function __construct(
         private Worker $worker,
         private Container $container,
@@ -40,25 +57,34 @@ final readonly class QueueRunner
 
     /**
      * @param  list<array{message_id?: string, body?: string, queue?: string, attempts?: int}>  $records
-     * @param  array{timeout?: int, memory?: int, tries?: int, backoff?: int}  $options
+     * @param  array{timeout?: int, tries?: int, backoff?: int}  $options
      * @return list<JobOutcome> one per record, in the order they arrived
      */
     public function process(array $records, array $options = []): array
     {
-        $workerOptions = $this->workerOptions($options);
+        $limit = isset($options['timeout']) ? self::jobTimeout($options['timeout']) : null;
+        $workerOptions = $this->workerOptions($options, $limit);
         $outcomes = [];
 
         foreach ($records as $record) {
-            $outcomes[] = $this->processOne($record, $workerOptions);
+            $outcomes[] = $this->processOne($record, $workerOptions, $limit);
         }
 
         return $outcomes;
     }
 
     /**
+     * The longest a job may run on a queue with the given timeout.
+     */
+    public static function jobTimeout(int $queueTimeout): int
+    {
+        return max(1, $queueTimeout - min(self::TIMEOUT_MARGIN, intdiv($queueTimeout, 2)));
+    }
+
+    /**
      * @param  array{message_id?: string, body?: string, queue?: string, attempts?: int}  $record
      */
-    private function processOne(array $record, WorkerOptions $options): JobOutcome
+    private function processOne(array $record, WorkerOptions $options, ?int $limit): JobOutcome
     {
         $job = new PlatformJob(
             container: $this->container,
@@ -70,7 +96,7 @@ final readonly class QueueRunner
         );
 
         try {
-            $this->worker->process($this->connectionName, $job, $options);
+            $this->processWithin($job, $options, $this->timeoutFor($job, $options, $limit));
         } catch (Throwable $e) {
             // The worker has already failed or released the job; it rethrows
             // so a daemon can report it. Only the message is left to keep.
@@ -88,6 +114,63 @@ final readonly class QueueRunner
         }
 
         return $job->outcome();
+    }
+
+    /**
+     * The seconds this job may run: its own timeout or the worker's, never
+     * past the queue's limit.
+     */
+    private function timeoutFor(PlatformJob $job, WorkerOptions $options, ?int $limit): int
+    {
+        $timeout = (int) ($job->timeout() ?? $options->timeout);
+
+        if ($limit !== null && ($timeout <= 0 || $timeout > $limit)) {
+            return $limit;
+        }
+
+        return $timeout;
+    }
+
+    /**
+     * Runs the job, stopping it with a TimeoutExceededException once it has
+     * run for $timeout seconds. The worker treats that like any other error:
+     * it fails the job when no attempt is left and releases it otherwise. A
+     * job that sets failOnTimeout is failed first, as `queue:work` does.
+     */
+    private function processWithin(PlatformJob $job, WorkerOptions $options, int $timeout): void
+    {
+        if ($timeout <= 0 || ! function_exists('pcntl_alarm')) {
+            $this->worker->process($this->connectionName, $job, $options);
+
+            return;
+        }
+
+        $async = pcntl_async_signals(true);
+        $previous = pcntl_signal_get_handler(SIGALRM);
+
+        pcntl_signal(SIGALRM, function () use ($job, $timeout): void {
+            $e = TimeoutExceededException::forJob($job);
+
+            if ($job->shouldFailOnTimeout()) {
+                $job->fail($e);
+            }
+
+            if ($this->container->bound('events')) {
+                $this->container->make('events')->dispatch(new JobTimedOut($this->connectionName, $job, $timeout));
+            }
+
+            throw $e;
+        });
+
+        pcntl_alarm($timeout);
+
+        try {
+            $this->worker->process($this->connectionName, $job, $options);
+        } finally {
+            pcntl_alarm(0);
+            pcntl_signal(SIGALRM, $previous);
+            pcntl_async_signals($async);
+        }
     }
 
     /**
@@ -166,14 +249,13 @@ final readonly class QueueRunner
     }
 
     /**
-     * @param  array{timeout?: int, memory?: int, tries?: int, backoff?: int}  $options
+     * @param  array{timeout?: int, tries?: int, backoff?: int}  $options
      */
-    private function workerOptions(array $options): WorkerOptions
+    private function workerOptions(array $options, ?int $limit): WorkerOptions
     {
         $workerOptions = new WorkerOptions;
 
-        $workerOptions->timeout = $options['timeout'] ?? $workerOptions->timeout;
-        $workerOptions->memory = $options['memory'] ?? $workerOptions->memory;
+        $workerOptions->timeout = $limit ?? $workerOptions->timeout;
         $workerOptions->maxTries = $options['tries'] ?? $workerOptions->maxTries;
         $workerOptions->backoff = $options['backoff'] ?? $workerOptions->backoff;
 

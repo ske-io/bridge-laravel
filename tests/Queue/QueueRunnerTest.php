@@ -67,11 +67,11 @@ it('carries the deployment queue settings into the worker', function () {
 
     makeRunner($worker)->process(
         [['message_id' => 'a', 'body' => '{}']],
-        ['timeout' => 120, 'memory' => 512, 'tries' => 5, 'backoff' => 10],
+        ['timeout' => 900, 'tries' => 5, 'backoff' => 10],
     );
 
-    expect($worker->lastOptions->timeout)->toBe(120)
-        ->and($worker->lastOptions->memory)->toBe(512)
+    // The job timeout stays below the queue's, which is the function's own.
+    expect($worker->lastOptions->timeout)->toBe(895)
         ->and($worker->lastOptions->maxTries)->toBe(5)
         ->and($worker->lastOptions->backoff)->toBe(10);
 });
@@ -91,12 +91,22 @@ it('keeps framework defaults for settings the deployment did not name', function
     $worker = new RecordingWorker;
     $defaults = new WorkerOptions;
 
-    makeRunner($worker)->process([['message_id' => 'a', 'body' => '{}']], ['timeout' => 99]);
+    makeRunner($worker)->process([['message_id' => 'a', 'body' => '{}']], ['tries' => 3]);
 
-    expect($worker->lastOptions->timeout)->toBe(99)
-        ->and($worker->lastOptions->maxTries)->toBe($defaults->maxTries)
-        ->and($worker->lastOptions->memory)->toBe($defaults->memory);
+    expect($worker->lastOptions->timeout)->toBe($defaults->timeout)
+        ->and($worker->lastOptions->maxTries)->toBe(3)
+        ->and($worker->lastOptions->backoff)->toBe($defaults->backoff);
 });
+
+it('keeps the job timeout below the queue timeout', function (int $queueTimeout, int $jobTimeout) {
+    expect(QueueRunner::jobTimeout($queueTimeout))->toBe($jobTimeout);
+})->with([
+    'the default queue' => [60, 55],
+    'the longest Lambda' => [900, 895],
+    'a short queue keeps half' => [6, 3],
+    'two seconds' => [2, 1],
+    'one second cannot go lower' => [1, 1],
+]);
 
 it('hands the worker the message the platform delivered', function () {
     $worker = new RecordingWorker;

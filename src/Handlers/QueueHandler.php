@@ -22,7 +22,7 @@ final readonly class QueueHandler
         /** @var list<array{message_id?: string, body?: string, queue?: string, attempts?: int}> $records */
         $records = is_array($payload['records'] ?? null) ? $payload['records'] : [];
 
-        /** @var array{timeout?: int, memory?: int, tries?: int, backoff?: int} $options */
+        /** @var array{timeout?: int, tries?: int, backoff?: int} $options */
         $options = is_array($payload['options'] ?? null) ? $payload['options'] : [];
 
         $outcomes = $this->runner->process($records, $options);
