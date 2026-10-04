@@ -143,6 +143,46 @@ it('recognises either variable the deploy engine sets', function (string $variab
     });
 })->with(PLATFORM_VARIABLES);
 
+// --- the upload path -----------------------------------------------------
+
+it('takes the upload path from SKE_UPLOADS_URL, or the default', function (?string $value, string $uri) {
+    withPlatform(present: false, callback: function () use ($value, $uri) {
+        withSkeEnvVariable('SKE_UPLOADS_URL', function () use ($value, $uri) {
+            if ($value !== null) {
+                $_SERVER['SKE_UPLOADS_URL'] = $value;
+            }
+
+            $app = applicationFor();
+
+            registerProvider($app)->boot();
+
+            expect($app->make('config')->get('ske.uploads.url'))->toBe($value ?? '/ske/signed-storage-url')
+                ->and(array_map(fn ($route) => $route->uri(), registeredRoutes($app)))->toBe([$uri]);
+        });
+    });
+})->with([
+    'unset' => [null, 'ske/signed-storage-url'],
+    'set' => ['/uploads/sign', 'uploads/sign'],
+]);
+
+it('lets a published config win over SKE_UPLOADS_URL', function () {
+    withPlatform(present: false, callback: function () {
+        withSkeEnvVariable('SKE_UPLOADS_URL', function () {
+            $_SERVER['SKE_UPLOADS_URL'] = '/uploads/sign';
+
+            $app = applicationFor(['ske' => ['uploads' => [
+                'enabled' => true,
+                'url' => '/published/sign',
+                'middleware' => [],
+            ]]]);
+
+            registerProvider($app)->boot();
+
+            expect(array_map(fn ($route) => $route->uri(), registeredRoutes($app)))->toBe(['published/sign']);
+        });
+    });
+});
+
 // --- on the platform -----------------------------------------------------
 
 it('binds the two runners as singletons', function () {

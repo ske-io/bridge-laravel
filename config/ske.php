@@ -21,7 +21,7 @@ return [
         'enabled' => true,
 
         // The path the frontend posts to for a signed upload URL.
-        'url' => '/ske/signed-storage-url',
+        'url' => env('SKE_UPLOADS_URL', '/ske/signed-storage-url'),
 
         // The route's middleware. 'web' gives the gate the session's user.
         'middleware' => ['web'],

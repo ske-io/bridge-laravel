@@ -16,6 +16,10 @@ use RuntimeException;
  *
  * `artisan down` and `artisan up` can't work here: each instance has its own
  * filesystem and is replaced on the next deploy.
+ *
+ * A MAINTENANCE_MODE_SECRET variable stands in for `artisan down --secret`:
+ * Laravel then lets through whoever visits /{secret} and keeps them in with
+ * its bypass cookie.
  */
 final class PlatformMaintenanceMode implements MaintenanceMode
 {
@@ -38,6 +42,8 @@ final class PlatformMaintenanceMode implements MaintenanceMode
     /** @return array<string, mixed> */
     public function data(): array
     {
-        return [];
+        $secret = Environment::get('MAINTENANCE_MODE_SECRET');
+
+        return $secret === null ? [] : ['secret' => $secret];
     }
 }
