@@ -17,7 +17,7 @@ function guard(Request $request): Response
 
 function requestWithHeader(?string $value): Request
 {
-    $request = Request::create('/__ske/cli', 'POST');
+    $request = Request::create('/__ske/queue', 'POST');
 
     if ($value !== null) {
         $request->headers->set(EnsureSkeInternal::HEADER, $value);

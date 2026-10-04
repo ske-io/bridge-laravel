@@ -3,14 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Config\Repository;
-use Illuminate\Console\Command;
 use Illuminate\Container\Container;
-use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
-use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -20,7 +17,6 @@ use Illuminate\Queue\WorkerOptions;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
-use Ske\Bridge\Laravel\Console\CommandRunner;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
@@ -125,8 +121,7 @@ it('is inert when the application is not running on the platform', function () {
         // application's own frontend calls it wherever the application runs.
         $uris = array_map(fn ($route) => $route->uri(), registeredRoutes($app));
 
-        expect($app->bound(CommandRunner::class))->toBeFalse()
-            ->and($app->bound(QueueRunner::class))->toBeFalse()
+        expect($app->bound(QueueRunner::class))->toBeFalse()
             ->and($uris)->toBe(['ske/signed-storage-url'])
             ->and($app->make('config')->get('logging.default'))->toBe('stack')
             ->and($app->make('config')->get('queue.connections.sqs.key'))->toBe('AKIA');
@@ -185,20 +180,17 @@ it('lets a published config win over SKE_UPLOADS_URL', function () {
 
 // --- on the platform -----------------------------------------------------
 
-it('binds the two runners as singletons', function () {
+it('binds the queue runner as a singleton', function () {
     withPlatform(present: true, callback: function () {
         $app = applicationFor();
-        $app->instance(ConsoleKernel::class, fakeConsoleKernel());
 
         registerProvider($app);
 
-        expect($app->isShared(CommandRunner::class))->toBeTrue()
-            ->and($app->isShared(QueueRunner::class))->toBeTrue()
-            ->and($app->make(CommandRunner::class))->toBe($app->make(CommandRunner::class));
+        expect($app->isShared(QueueRunner::class))->toBeTrue();
     });
 });
 
-it('registers the three internal routes the adapter calls', function () {
+it('registers the internal route the adapter calls', function () {
     withPlatform(present: true, callback: function () {
         $app = applicationFor();
 
@@ -207,12 +199,8 @@ it('registers the three internal routes the adapter calls', function () {
         $routes = collect(registeredRoutes($app))
             ->mapWithKeys(fn ($route) => [$route->uri() => [$route->methods(), $route->middleware()]]);
 
-        expect($routes->keys()->all())->toBe([
-            'ske/signed-storage-url', '__ske/cli', '__ske/queue', '__ske/scheduler',
-        ])
-            ->and($routes['__ske/cli'][0])->toContain('POST')
-            ->and($routes['__ske/queue'][0])->toContain('POST')
-            ->and($routes['__ske/scheduler'][0])->toContain('POST');
+        expect($routes->keys()->all())->toBe(['ske/signed-storage-url', '__ske/queue'])
+            ->and($routes['__ske/queue'][0])->toContain('POST');
     });
 });
 
@@ -241,7 +229,7 @@ it('keeps the adapter routes and the readiness probe open during maintenance', f
     });
 });
 
-it('guards all internal routes', function () {
+it('guards the internal route', function () {
     withPlatform(present: true, callback: function () {
         $app = applicationFor();
 
@@ -253,7 +241,7 @@ it('guards all internal routes', function () {
             ->values()
             ->all();
 
-        expect($guarded)->toBe(['__ske/cli', '__ske/queue', '__ske/scheduler']);
+        expect($guarded)->toBe(['__ske/queue']);
     });
 });
 
@@ -437,7 +425,7 @@ it('teaches the HTTP kernel to trust the platform proxy and correlate requests',
 });
 
 it('does not reach for an HTTP kernel in a console process', function () {
-    // A queue or scheduler invocation boots the console kernel and never binds
+    // A console command or the scheduler boots the console kernel and never binds
     // an HTTP one; asking for it would abort the worker before it ran a job.
     withPlatform(present: true, callback: function () {
         $_SERVER['APP_RUNNING_IN_CONSOLE'] = 'true';
@@ -447,48 +435,6 @@ it('does not reach for an HTTP kernel in a console process', function () {
         expect(fn () => registerProvider($app)->boot())->not->toThrow(Throwable::class);
     });
 });
-
-function fakeConsoleKernel(): ConsoleKernel
-{
-    return new class implements ConsoleKernel
-    {
-        public function bootstrap(): void {}
-
-        public function handle($input, $output = null): int
-        {
-            return 0;
-        }
-
-        public function terminate($input, $status): void {}
-
-        /**
-         * @param  array<string, mixed>  $parameters
-         */
-        public function call($command, array $parameters = [], $outputBuffer = null): int
-        {
-            return 0;
-        }
-
-        /**
-         * @param  array<string, mixed>  $parameters
-         */
-        public function queue($command, array $parameters = []): PendingDispatch
-        {
-            throw new RuntimeException('Not implemented in test double');
-        }
-
-        /** @return array<string, Command> */
-        public function all(): array
-        {
-            return [];
-        }
-
-        public function output(): string
-        {
-            return '';
-        }
-    };
-}
 
 /**
  * A kernel that records what was prepended rather than running it through a

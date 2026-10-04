@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Ske\Bridge\Laravel;
 
-use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Foundation\CachesRoutes;
 use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Foundation\Application;
@@ -16,10 +15,7 @@ use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Monolog\Handler\StreamHandler;
-use Ske\Bridge\Laravel\Console\CommandRunner;
-use Ske\Bridge\Laravel\Handlers\CliHandler;
 use Ske\Bridge\Laravel\Handlers\QueueHandler;
-use Ske\Bridge\Laravel\Handlers\SchedulerHandler;
 use Ske\Bridge\Laravel\Http\Controllers\SignedStorageUrlController;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
@@ -32,7 +28,10 @@ use Ske\Bridge\Laravel\Runtime\Environment;
 use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 
 /**
- * Wires the four things a deployment needs: HTTP, queue, CLI and scheduler.
+ * Wires what a deployment needs: HTTP, delivered queue jobs, and the setup
+ * every process gets (logging, the queue connection, maintenance mode). The
+ * adapter runs commands and the scheduler as plain `php artisan` processes,
+ * which boot through here like any other.
  *
  * Everything here is inert off-platform. A developer running the same
  * application locally gets none of it, which is what keeps the package safe to
@@ -57,11 +56,6 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->app->singleton(MaintenanceMode::class, fn (): MaintenanceMode => new PlatformMaintenanceMode);
 
-        $this->app->singleton(
-            CommandRunner::class,
-            fn ($app): CommandRunner => new CommandRunner($app->make(ConsoleKernel::class)),
-        );
-
         $this->app->singleton(QueueRunner::class, fn ($app): QueueRunner => $this->queueRunner($app));
     }
 
@@ -77,9 +71,9 @@ final class SkeServiceProvider extends ServiceProvider
         $this->trustPlatformProxy();
         $this->registerRoutes();
 
-        // The adapter delivers queue jobs, scheduler runs and CLI commands
-        // through these routes, and probes /up for readiness; maintenance
-        // only closes the application to its visitors.
+        // The adapter delivers queue jobs through the internal route and
+        // probes /up for readiness; maintenance only closes the application
+        // to its visitors.
         PreventRequestsDuringMaintenance::except(['__ske/*', 'up']);
     }
 
@@ -102,11 +96,7 @@ final class SkeServiceProvider extends ServiceProvider
 
     private function registerRoutes(): void
     {
-        Route::middleware(EnsureSkeInternal::class)->group(function (): void {
-            Route::post('/__ske/cli', CliHandler::class);
-            Route::post('/__ske/queue', QueueHandler::class);
-            Route::post('/__ske/scheduler', SchedulerHandler::class);
-        });
+        Route::post('/__ske/queue', QueueHandler::class)->middleware(EnsureSkeInternal::class);
     }
 
     /**

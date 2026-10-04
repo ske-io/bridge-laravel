@@ -1,6 +1,6 @@
 {
     "name": "ske/laravel-bridge",
-    "description": "Runs a Laravel application on SKE: HTTP, queue, CLI and scheduler",
+    "description": "Runs a Laravel application on SKE: HTTP, queue and console",
     "type": "library",
     "license": "MIT",
     "require": {
