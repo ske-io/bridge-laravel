@@ -19,6 +19,7 @@ use RuntimeException;
  */
 final class PlatformMaintenanceMode implements MaintenanceMode
 {
+    /** @param  array<string, mixed>  $payload */
     public function activate(array $payload): void
     {
         throw new RuntimeException('Turn on maintenance mode for this environment in the SKE dashboard instead.');
