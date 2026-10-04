@@ -8,6 +8,7 @@ use Illuminate\Container\Container;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Events\Dispatcher;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
@@ -76,8 +77,9 @@ function withPlatform(bool $present, Closure $callback): void
 }
 
 /**
- * The smallest application the provider can be pointed at: a config repository
- * and a router, which is all it touches. Deliberately not a booted framework —
+ * The smallest application the provider can be pointed at: a config repository,
+ * a router and the filesystem it checks for a route cache, which is all it
+ * touches. Deliberately not a booted framework —
  * what is under test is the wiring, not Laravel.
  *
  * @param  array<string, mixed>  $config
@@ -86,6 +88,7 @@ function applicationFor(array $config = []): Application
 {
     $app = new Application(sys_get_temp_dir());
     $app->instance('config', new Repository($config));
+    $app->instance('files', new Filesystem);
     $app->instance('router', new Router(new Dispatcher($app), $app));
 
     Facade::setFacadeApplication($app);
@@ -118,9 +121,13 @@ it('is inert when the application is not running on the platform', function () {
 
         registerProvider($app)->boot();
 
+        // The upload endpoint is the one route registered anyway: the
+        // application's own frontend calls it wherever the application runs.
+        $uris = array_map(fn ($route) => $route->uri(), registeredRoutes($app));
+
         expect($app->bound(CommandRunner::class))->toBeFalse()
             ->and($app->bound(QueueRunner::class))->toBeFalse()
-            ->and(registeredRoutes($app))->toBe([])
+            ->and($uris)->toBe(['ske/signed-storage-url'])
             ->and($app->make('config')->get('logging.default'))->toBe('stack')
             ->and($app->make('config')->get('queue.connections.sqs.key'))->toBe('AKIA');
     });
@@ -161,7 +168,7 @@ it('registers the three internal routes the adapter calls', function () {
             ->mapWithKeys(fn ($route) => [$route->uri() => [$route->methods(), $route->middleware()]]);
 
         expect($routes->keys()->all())->toBe([
-            '__ske/cli', '__ske/queue', '__ske/scheduler',
+            'ske/signed-storage-url', '__ske/cli', '__ske/queue', '__ske/scheduler',
         ])
             ->and($routes['__ske/cli'][0])->toContain('POST')
             ->and($routes['__ske/queue'][0])->toContain('POST')

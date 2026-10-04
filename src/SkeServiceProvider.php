@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ske\Bridge\Laravel;
 
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
+use Illuminate\Contracts\Foundation\CachesRoutes;
 use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
@@ -19,6 +20,7 @@ use Ske\Bridge\Laravel\Console\CommandRunner;
 use Ske\Bridge\Laravel\Handlers\CliHandler;
 use Ske\Bridge\Laravel\Handlers\QueueHandler;
 use Ske\Bridge\Laravel\Handlers\SchedulerHandler;
+use Ske\Bridge\Laravel\Http\Controllers\SignedStorageUrlController;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
@@ -34,12 +36,17 @@ use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
  *
  * Everything here is inert off-platform. A developer running the same
  * application locally gets none of it, which is what keeps the package safe to
- * require unconditionally.
+ * require unconditionally. The one exception is the upload endpoint, which the
+ * application's own frontend calls and so must answer wherever it runs.
  */
 final class SkeServiceProvider extends ServiceProvider
 {
+    private const CONFIG = __DIR__.'/../config/ske.php';
+
     public function register(): void
     {
+        $this->mergeConfigFrom(self::CONFIG, 'ske');
+
         if (! self::runningOnPlatform()) {
             return;
         }
@@ -60,6 +67,9 @@ final class SkeServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->publishes([self::CONFIG => $this->app->configPath('ske.php')], 'ske-config');
+        $this->registerUploadRoute();
+
         if (! self::runningOnPlatform()) {
             return;
         }
@@ -97,6 +107,27 @@ final class SkeServiceProvider extends ServiceProvider
             Route::post('/__ske/queue', QueueHandler::class);
             Route::post('/__ske/scheduler', SchedulerHandler::class);
         });
+    }
+
+    /**
+     * The endpoint the frontend asks for a signed upload URL. Registered on
+     * and off the platform: the frontend calls it wherever the application
+     * runs, and it only signs with the application's own disk.
+     */
+    private function registerUploadRoute(): void
+    {
+        $url = config('ske.uploads.url');
+
+        if (! config('ske.uploads.enabled') || ! is_string($url)) {
+            return;
+        }
+
+        if ($this->app instanceof CachesRoutes && $this->app->routesAreCached()) {
+            return;
+        }
+
+        Route::post($url, SignedStorageUrlController::class)
+            ->middleware(config('ske.uploads.middleware', []));
     }
 
     /**
