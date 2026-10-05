@@ -14,7 +14,9 @@ use Illuminate\Queue\QueueManager;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\StreamHandler;
+use Monolog\Processor\PsrLogMessageProcessor;
 use Ske\Bridge\Laravel\Handlers\QueueHandler;
 use Ske\Bridge\Laravel\Http\Controllers\SignedStorageUrlController;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
@@ -122,7 +124,10 @@ final class SkeServiceProvider extends ServiceProvider
 
     /**
      * The image has no log files to read, so everything goes to stderr, which
-     * the adapter forwards to the platform's log.
+     * the adapter forwards to the platform's log. Each record is one JSON
+     * line, its exception's stack trace included, which the logs page reads
+     * into level, message, context and exception. A LOG_STDERR_FORMATTER
+     * the deployment sets still wins.
      */
     private function configureLogging(): void
     {
@@ -130,6 +135,9 @@ final class SkeServiceProvider extends ServiceProvider
             'driver' => 'monolog',
             'handler' => StreamHandler::class,
             'with' => ['stream' => 'php://stderr'],
+            'formatter' => Environment::get('LOG_STDERR_FORMATTER') ?? JsonFormatter::class,
+            'formatter_with' => ['includeStacktraces' => true],
+            'processors' => [PsrLogMessageProcessor::class],
             'level' => 'debug',
         ]]);
 

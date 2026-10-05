@@ -11,12 +11,19 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Log\Logger;
+use Illuminate\Log\LogManager;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Queue\Worker;
 use Illuminate\Queue\WorkerOptions;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
+use Monolog\Formatter\JsonFormatter;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Handler\FormattableHandlerInterface;
+use Monolog\Level;
+use Monolog\LogRecord;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
@@ -253,6 +260,48 @@ it('sends the log to stderr, because the image has no file to write', function (
 
         expect($app->make('config')->get('logging.default'))->toBe('stderr')
             ->and($app->make('config')->get('logging.channels.stderr.with.stream'))->toBe('php://stderr');
+    });
+});
+
+it('logs one JSON record per line, with the exception\'s stack trace', function () {
+    withPlatform(present: true, callback: function () {
+        $app = applicationFor(['logging' => ['default' => 'stack']]);
+        registerProvider($app);
+
+        $channel = (new LogManager($app))->channel('stderr');
+        $monolog = $channel instanceof Logger ? $channel->getLogger() : null;
+        $handler = $monolog instanceof Monolog\Logger ? $monolog->getHandlers()[0] : null;
+
+        $record = new LogRecord(
+            new DateTimeImmutable,
+            'production',
+            Level::Error,
+            'Order {id} could not be charged',
+            ['id' => 17, 'exception' => new RuntimeException('card declined')],
+        );
+
+        foreach ($monolog instanceof Monolog\Logger ? $monolog->getProcessors() : [] as $processor) {
+            $record = $processor($record);
+        }
+
+        $formatter = $handler instanceof FormattableHandlerInterface ? $handler->getFormatter() : null;
+        $line = json_decode((string) $formatter?->format($record), true);
+
+        expect($formatter)->toBeInstanceOf(JsonFormatter::class)
+            ->and($line)->toMatchArray(['message' => 'Order 17 could not be charged', 'level_name' => 'ERROR'])
+            ->and(data_get($line, 'context.exception.class'))->toBe(RuntimeException::class)
+            ->and(data_get($line, 'context.exception.trace'))->not->toBeEmpty();
+    });
+});
+
+it('lets the deployment choose another formatter', function () {
+    withPlatform(present: true, callback: function () {
+        $_SERVER['LOG_STDERR_FORMATTER'] = LineFormatter::class;
+        $app = applicationFor(['logging' => ['default' => 'stack']]);
+
+        registerProvider($app);
+
+        expect($app->make('config')->get('logging.channels.stderr.formatter'))->toBe(LineFormatter::class);
     });
 });
 
