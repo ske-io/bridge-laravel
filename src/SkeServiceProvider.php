@@ -11,7 +11,6 @@ use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Queue\QueueManager;
-use Illuminate\Queue\Worker;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Monolog\Formatter\JsonFormatter;
@@ -165,7 +164,9 @@ final class SkeServiceProvider extends ServiceProvider
      * The runner for delivered jobs: it records failures with the application's
      * failed job provider, and on GCP puts a released job back on its Cloud
      * Tasks queue so its delay is kept. It knows each provider's queue naming
-     * so a job reports the application's queue name.
+     * so a job reports the application's queue name. The worker is the
+     * framework's `queue.worker`: its constructor needs the maintenance check
+     * that only that binding supplies, so the class cannot be autowired.
      */
     private function queueRunner(Application $app): QueueRunner
     {
@@ -173,7 +174,7 @@ final class SkeServiceProvider extends ServiceProvider
         $requeue = $provider === 'gcp' ? $app->make('queue')->connection('ske') : null;
 
         return new QueueRunner(
-            worker: $app->make(Worker::class),
+            worker: $app->make('queue.worker'),
             container: $app,
             failer: $app->bound('queue.failer') ? $app->make('queue.failer') : null,
             requeue: $requeue instanceof CloudTasksQueue ? $requeue : null,

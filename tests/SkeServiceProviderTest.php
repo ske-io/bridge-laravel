@@ -396,7 +396,7 @@ it('puts a job released on GCP back on its Cloud Tasks queue', function () {
         $app = applicationFor();
         $app->instance(HttpFactory::class, $http);
         $app->singleton('queue', fn ($app) => new QueueManager($app));
-        $app->instance(Worker::class, new class extends Worker
+        $app->instance('queue.worker', new class extends Worker
         {
             public function __construct() {}
 
