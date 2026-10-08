@@ -95,11 +95,15 @@ final readonly class QueueRunner
             attempts: (int) ($record['attempts'] ?? 1),
         );
 
+        $exception = null;
+
         try {
             $this->processWithin($job, $options, $this->timeoutFor($job, $options, $limit));
         } catch (Throwable $e) {
-            // The worker has already failed or released the job; it rethrows
-            // so a daemon can report it. Only the message is left to keep.
+            // The worker has already failed or released the job and rethrows
+            // for the caller to report. That covers a job stopped by the
+            // timeout too.
+            $exception = $e;
             $job->recordError($e);
 
             if (! $job->hasFailed() && ! $job->isReleased() && ! $job->isDeleted()) {
@@ -111,6 +115,11 @@ final readonly class QueueRunner
             $this->recordFailure($job);
         } elseif ($job->isReleased()) {
             $this->requeue($job);
+        }
+
+        // Reported once the job's outcome is saved, as `queue:work` does.
+        if ($exception !== null && (! property_exists(Worker::class, 'reportJobExceptions') || Worker::$reportJobExceptions)) {
+            $this->report($job, $exception);
         }
 
         return $job->outcome();
@@ -190,10 +199,24 @@ final readonly class QueueRunner
             );
         } catch (Throwable $e) {
             $job->recordError($e);
+            $this->report($job, $e);
+        }
+    }
 
+    /**
+     * Hands an error to the application's exception handler, so its
+     * dontReport list and reportable callbacks decide what is logged. A
+     * handler that throws is kept as the job's error instead: the outcome
+     * must still reach the platform.
+     */
+    private function report(PlatformJob $job, Throwable $e): void
+    {
+        try {
             if ($this->container->bound(ExceptionHandler::class)) {
                 $this->container->make(ExceptionHandler::class)->report($e);
             }
+        } catch (Throwable $reportError) {
+            $job->recordError($reportError);
         }
     }
 
