@@ -8,6 +8,7 @@ use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Queue\Failed\FailedJobProviderInterface;
+use Illuminate\Queue\Failed\NullFailedJobProvider;
 use Illuminate\Queue\ManuallyFailedException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Queue\Worker;
@@ -32,9 +33,11 @@ use Throwable;
  * the platform's own timeout is the only limit.
  *
  * A job that fails for good is recorded with the failed job provider, as
- * `queue:work` does. A released job goes back to the platform: on a queue that
- * can schedule (Cloud Tasks) it is put back as a new message due after its
- * delay, carrying its attempts; elsewhere the platform redelivers it.
+ * `queue:work` does. Without one that keeps it (the null driver of an app with
+ * no database), it goes back to the platform as a dead letter instead. A
+ * released job goes back to the platform: on a queue that can schedule (Cloud
+ * Tasks) it is put back as a new message due after its delay, carrying its
+ * attempts; elsewhere the platform redelivers it.
  */
 final readonly class QueueRunner
 {
@@ -184,20 +187,29 @@ final readonly class QueueRunner
 
     /**
      * Records a job that failed for good in failed_jobs. The job stays failed
-     * when that cannot be written (no table, the database briefly away): its
-     * failed() hook and the JobFailed event have already run, and delivering it
-     * again would run them a second time. The write error is reported instead.
+     * when there is nowhere to record it, or that cannot be written (no table,
+     * the database briefly away): its failed() hook and the JobFailed event
+     * have already run, and delivering it again would run them a second time.
+     * It is marked a dead letter instead, for the platform to keep, and a write
+     * error is reported.
      */
     private function recordFailure(PlatformJob $job): void
     {
+        if ($this->failer === null || $this->failer instanceof NullFailedJobProvider) {
+            $job->markAsDeadLetter();
+
+            return;
+        }
+
         try {
-            $this->failer?->log(
+            $this->failer->log(
                 $this->connectionName,
                 $job->getQueue(),
                 $job->getRawBody(),
                 $job->failure() ?? new ManuallyFailedException,
             );
         } catch (Throwable $e) {
+            $job->markAsDeadLetter();
             $job->recordError($e);
             $this->report($job, $e);
         }

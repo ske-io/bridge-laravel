@@ -147,6 +147,8 @@ it('reports an untouched job as neither deleted nor released', function () {
         'released' => false,
         'release_delay' => null,
         'failed' => false,
+        'dead_letter' => false,
+        'attempts' => 1,
         'error' => null,
     ]);
 });

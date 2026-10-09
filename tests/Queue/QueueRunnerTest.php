@@ -6,6 +6,7 @@ use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Queue\Job as JobContract;
 use Illuminate\Queue\Failed\FailedJobProviderInterface;
+use Illuminate\Queue\Failed\NullFailedJobProvider;
 use Illuminate\Queue\Worker;
 use Illuminate\Queue\WorkerOptions;
 use Ske\Bridge\Laravel\Queue\PlatformJob;
@@ -168,12 +169,48 @@ it('records a job that failed for good with the failed job provider', function (
     ])[0];
 
     expect($failer->logged)->toBe([['ske', 'emails', '{"uuid":"u-1"}']])
-        ->and($outcome->failed)->toBeTrue();
+        ->and($outcome->failed)->toBeTrue()
+        ->and($outcome->deadLetter)->toBeFalse();
 });
+
+it('hands a job that failed for good back as a dead letter when nothing records it', function (?FailedJobProviderInterface $failer) {
+    // Without a database the failed job store is the null driver: an
+    // acknowledged message would leave no trace of the job.
+    $worker = new RecordingWorker;
+    $worker->onProcess = fn (PlatformJob $job) => $job->markAsFailed();
+
+    $outcome = (new QueueRunner($worker, new Container, failer: $failer))->process([
+        ['message_id' => 'a', 'body' => '{"uuid":"u-1"}', 'attempts' => 3],
+    ])[0];
+
+    expect($outcome->failed)->toBeTrue()
+        ->and($outcome->deadLetter)->toBeTrue()
+        ->and($outcome->deleted)->toBeFalse()
+        ->and($outcome->released)->toBeFalse()
+        ->and($outcome->attempts)->toBe(3);
+})->with([
+    'the null driver' => fn () => new NullFailedJobProvider,
+    'no failed job provider' => [null],
+]);
+
+it('does not make a dead letter of a job that was released or finished', function (Closure $outcome) {
+    $worker = new RecordingWorker;
+    $worker->onProcess = $outcome;
+
+    $result = (new QueueRunner($worker, new Container, failer: new NullFailedJobProvider))->process([
+        ['message_id' => 'a', 'body' => '{}'],
+    ])[0];
+
+    expect($result->deadLetter)->toBeFalse();
+})->with([
+    'released' => fn () => fn (PlatformJob $job) => $job->release(10),
+    'deleted' => fn () => fn (PlatformJob $job) => $job->delete(),
+]);
 
 it('keeps a failed job failed when failed_jobs cannot be written, and reports why', function () {
     // Its failed() hook has run; a 500 here would have the platform deliver
     // it again and run the hook again, and on SQS lose the batch's outcomes.
+    // Unrecorded, it goes back as a dead letter.
     $worker = new RecordingWorker;
     $worker->onProcess = fn (PlatformJob $job) => $job->markAsFailed();
     $failer = new RecordingFailer;
@@ -189,6 +226,7 @@ it('keeps a failed job failed when failed_jobs cannot be written, and reports wh
 
     expect($outcomes)->toHaveCount(2)
         ->and($outcomes[0]->failed)->toBeTrue()
+        ->and($outcomes[0]->deadLetter)->toBeTrue()
         ->and($outcomes[0]->released)->toBeFalse()
         ->and($outcomes[0]->error)->toBe('no such table: failed_jobs')
         ->and($handler->reported)->toBe(['no such table: failed_jobs', 'no such table: failed_jobs']);
