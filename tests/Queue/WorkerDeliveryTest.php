@@ -21,6 +21,7 @@ use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Queue\Failed\DatabaseUuidFailedJobProvider;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\QueueManager;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Queue\Worker;
 use Illuminate\Support\Carbon;
 use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
@@ -112,6 +113,12 @@ final class Delivery
     /** @var list<JobTimedOut> */
     public array $timedOutEvents = [];
 
+    /** @var list<Throwable> what the application's exception handler was given */
+    public array $reported = [];
+
+    /** Thrown by the exception handler after it records a report. */
+    public ?Throwable $reportThrows = null;
+
     /** @var list<self> */
     public static array $open = [];
 
@@ -132,6 +139,13 @@ final class Delivery
         $this->app->instance('events', $events);
         $this->app->instance(EventsContract::class, $events);
         $this->app->instance(BusDispatcherContract::class, new BusDispatcher($this->app));
+        $this->app->instance(ExceptionHandler::class, recordingHandler(function (Throwable $e): void {
+            $this->reported[] = $e;
+
+            if ($this->reportThrows !== null) {
+                throw $this->reportThrows;
+            }
+        }));
         // Laravel reads the failed job settings when a timed-out job fails.
         $this->app->instance('config', new ConfigRepository(['queue' => ['failed' => []]]));
 
@@ -235,9 +249,25 @@ final class Delivery
 
 function silentHandler(): ExceptionHandler
 {
-    return new class implements ExceptionHandler
+    return recordingHandler(function (): void {});
+}
+
+/**
+ * @param  Closure(Throwable): void  $record
+ */
+function recordingHandler(Closure $record): ExceptionHandler
+{
+    return new class($record) implements ExceptionHandler
     {
-        public function report(Throwable $e): void {}
+        /**
+         * @param  Closure(Throwable): void  $record
+         */
+        public function __construct(private Closure $record) {}
+
+        public function report(Throwable $e): void
+        {
+            ($this->record)($e);
+        }
 
         public function shouldReport(Throwable $e): bool
         {
@@ -292,6 +322,7 @@ it('puts a released job back on its Cloud Tasks queue after its backoff, and ack
         ->and($outcome->deleted)->toBeTrue()
         ->and($outcome->released)->toBeFalse()
         ->and($outcome->error)->toBe('the mail server is down')
+        ->and(array_map(fn (Throwable $e) => $e->getMessage(), $delivery->reported))->toBe(['the mail server is down'])
         ->and($delivery->failedJobs())->toBe([]);
 });
 
@@ -328,6 +359,33 @@ it('runs Laravel\'s failure handling when a job fails for good, and acknowledges
         ->and($outcome->failed)->toBeTrue()
         ->and($outcome->released)->toBeFalse()
         ->and($delivery->tasksCreated())->toHaveCount(1);
+});
+
+it('keeps a failed job\'s outcome when the exception handler throws while reporting it', function () {
+    $delivery = new Delivery;
+    $delivery->reportThrows = new RuntimeException('the log channel is broken');
+
+    $outcome = $delivery->deliver($delivery->dispatch(new DeliveredJob(throws: true)), attempts: 2);
+
+    expect(DeliveredJob::$log)->toBe(['handle', 'failed: the mail server is down'])
+        ->and($delivery->reported)->toHaveCount(1)
+        ->and($outcome->failed)->toBeTrue()
+        ->and($outcome->error)->toBe('the mail server is down')
+        ->and($delivery->failedJobs())->toHaveCount(1);
+});
+
+it('does not report a job\'s exception when the worker is told not to', function () {
+    $delivery = new Delivery;
+    Worker::$reportJobExceptions = false;
+
+    try {
+        $outcome = $delivery->deliver($delivery->dispatch(new DeliveredJob(throws: true)), attempts: 1);
+    } finally {
+        Worker::$reportJobExceptions = true;
+    }
+
+    expect($outcome->error)->toBe('the mail server is down')
+        ->and($delivery->reported)->toBe([]);
 });
 
 it('fails a job delivered more times than it may try, without running it', function () {
@@ -373,6 +431,8 @@ it('stops a job that runs past the queue timeout and puts it back for another at
         ->and(SlowJob::$log)->toBe(['handle'])
         ->and($delivery->timedOutEvents)->toHaveCount(1)
         ->and($outcome->error)->toBe(SlowJob::class.' has timed out.')
+        ->and($delivery->reported)->toHaveCount(1)
+        ->and($delivery->reported[0])->toBeInstanceOf(TimeoutExceededException::class)
         ->and($delivery->tasksCreated())->toHaveCount(2)
         ->and($outcome->deleted)->toBeTrue()
         ->and($delivery->failedJobs())->toBe([]);

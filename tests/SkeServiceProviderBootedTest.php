@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\BootProviders;
 use Illuminate\Foundation\Bootstrap\LoadConfiguration;
 use Illuminate\Foundation\Bootstrap\RegisterProviders;
+use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Queue\NullQueue;
 use Illuminate\Support\Facades\Facade;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
@@ -33,6 +35,19 @@ final class FlagJob implements ShouldQueue
     public function handle(): void
     {
         self::$ran = true;
+    }
+}
+
+/** A job that always throws, with attempts left so it is released. */
+final class ThrowingJob implements ShouldQueue
+{
+    use Queueable;
+
+    public int $tries = 3;
+
+    public function handle(): void
+    {
+        throw new RuntimeException('the mail server is down');
     }
 }
 
@@ -83,23 +98,30 @@ function withBootedApplication(Closure $callback): void
     }
 }
 
+/**
+ * The body SqsQueue sends for a job, built by the framework's own payload code.
+ */
+function sqsBody(Application $app, object $job): string
+{
+    $queue = new class extends NullQueue
+    {
+        public function body(object $job): string
+        {
+            return $this->createPayload($job, 'emails');
+        }
+    };
+    $queue->setContainer($app);
+
+    return $queue->body($job);
+}
+
 it('runs a job delivered from SQS in a booted application', function () {
     FlagJob::$ran = false;
 
     withBootedApplication(function (Application $app) {
-        // The body SqsQueue sends, built by the framework's own payload code.
-        $queue = new class extends NullQueue
-        {
-            public function body(object $job): string
-            {
-                return $this->createPayload($job, 'emails');
-            }
-        };
-        $queue->setContainer($app);
-
         $outcome = $app->make(QueueRunner::class)->process([[
             'message_id' => 'a1b2c3',
-            'body' => $queue->body(new FlagJob),
+            'body' => sqsBody($app, new FlagJob),
             'queue' => 'emails--ske-shop-prod',
             'attempts' => 1,
         ]])[0];
@@ -108,5 +130,42 @@ it('runs a job delivered from SQS in a booted application', function () {
             ->and(FlagJob::$ran)->toBeTrue()
             ->and($outcome->deleted)->toBeTrue()
             ->and($outcome->released || $outcome->failed)->toBeFalse();
+    });
+});
+
+it('reports a job\'s exception through the application\'s handler, once', function () {
+    withBootedApplication(function (Application $app) {
+        // The bridge's stderr channel, written to a file the test can read.
+        $log = $app->basePath('stderr.log');
+        config(['logging.channels.stderr.with.stream' => $log]);
+
+        // Counts what reaches the handler; it still logs each one itself.
+        $reported = [];
+        $handler = $app->make(ExceptionHandler::class);
+        if ($handler instanceof Handler) {
+            $handler->reportable(function (Throwable $e) use (&$reported) {
+                $reported[] = $e->getMessage();
+            });
+        }
+
+        $outcome = $app->make(QueueRunner::class)->process([[
+            'message_id' => 'a1b2c3',
+            'body' => sqsBody($app, new ThrowingJob),
+            'queue' => 'emails--ske-shop-prod',
+            'attempts' => 1,
+        ]])[0];
+
+        $records = array_map(
+            fn (string $line) => json_decode($line, true),
+            file($log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [],
+        );
+
+        expect($outcome->released)->toBeTrue()
+            ->and($outcome->error)->toBe('the mail server is down')
+            ->and($reported)->toBe(['the mail server is down'])
+            ->and($records)->toHaveCount(1)
+            ->and($records[0]['level_name'])->toBe('ERROR')
+            ->and($records[0]['message'])->toBe('the mail server is down')
+            ->and($records[0]['context']['exception']['class'])->toBe(RuntimeException::class);
     });
 });
