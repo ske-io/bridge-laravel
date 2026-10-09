@@ -19,7 +19,8 @@ use Throwable;
  *
  * Failing goes through Laravel's own path: the job's failed() hook, the
  * JobFailed event, and (in QueueRunner) the failed_jobs record. A failed job is
- * finished, and the adapter acknowledges it.
+ * finished: the adapter acknowledges it, or keeps it as a dead letter when no
+ * failed_jobs record holds it.
  */
 final class PlatformJob extends Job implements JobContract
 {
@@ -30,6 +31,8 @@ final class PlatformJob extends Job implements JobContract
     private ?string $error = null;
 
     private bool $requeued = false;
+
+    private bool $deadLetter = false;
 
     public function __construct(
         Container $container,
@@ -124,8 +127,18 @@ final class PlatformJob extends Job implements JobContract
     }
 
     /**
+     * The failed job is not recorded in failed_jobs, so the platform must keep
+     * the message for it to be inspected and retried.
+     */
+    public function markAsDeadLetter(): void
+    {
+        $this->deadLetter = true;
+    }
+
+    /**
      * The outcome the adapter needs in order to settle this message: failed
-     * (finished, recorded), released (deliver again) or deleted (done).
+     * (finished; kept as a dead letter when unrecorded), released (deliver
+     * again) or deleted (done).
      */
     public function outcome(): JobOutcome
     {
@@ -138,6 +151,8 @@ final class PlatformJob extends Job implements JobContract
             released: $released,
             releaseDelay: $released ? $this->releaseDelay : null,
             failed: $failed,
+            deadLetter: $failed && $this->deadLetter,
+            attempts: $this->attempts(),
             error: $this->error,
         );
     }

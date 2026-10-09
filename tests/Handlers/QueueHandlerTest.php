@@ -103,5 +103,7 @@ it('includes error details for failed jobs', function () {
     $outcome = $response->getData(true)['outcomes'][0];
 
     expect($outcome['failed'])->toBeTrue()
+        ->and($outcome['dead_letter'])->toBeTrue()
+        ->and($outcome['attempts'])->toBe(1)
         ->and($outcome['error'])->toBe('Connection refused');
 });
