@@ -13,6 +13,7 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Log\Logger;
 use Illuminate\Log\LogManager;
+use Illuminate\Mail\MailManager;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Queue\Worker;
 use Illuminate\Queue\WorkerOptions;
@@ -42,6 +43,12 @@ use Ske\Bridge\Laravel\SkeServiceProvider;
 const PLATFORM_VARIABLES = ['SKE_PROJECT_TYPE', 'SKE_ENVIRONMENT'];
 
 /**
+ * The AWS variables the provider reads, cleared the same way: a machine with
+ * its own AWS key or region exported must not decide what a test sees.
+ */
+const AWS_VARIABLES = ['AWS_ACCESS_KEY_ID', 'AWS_SES_REGION', 'AWS_REGION', 'AWS_DEFAULT_REGION'];
+
+/**
  * Runs a callback with the platform either announced or absent, restoring the
  * real environment — and the container and facade globals the application
  * constructor claims — afterwards.
@@ -50,13 +57,14 @@ function withPlatform(bool $present, Closure $callback): void
 {
     $server = $_SERVER;
     $env = $_ENV;
+    $variables = [...PLATFORM_VARIABLES, ...AWS_VARIABLES];
     $process = array_map(
         fn (string $key): string|false => getenv($key),
-        PLATFORM_VARIABLES,
+        $variables,
     );
     $container = Container::getInstance();
 
-    foreach (PLATFORM_VARIABLES as $key) {
+    foreach ($variables as $key) {
         unset($_SERVER[$key], $_ENV[$key]);
         putenv($key);
     }
@@ -70,7 +78,7 @@ function withPlatform(bool $present, Closure $callback): void
     } finally {
         $_SERVER = $server;
         $_ENV = $env;
-        foreach (PLATFORM_VARIABLES as $i => $key) {
+        foreach ($variables as $i => $key) {
             is_string($process[$i]) ? putenv("{$key}={$process[$i]}") : putenv($key);
         }
         Facade::clearResolvedInstances();
@@ -321,22 +329,146 @@ it('clears the half-credentials that would be rejected', function () {
     // config reads the first two and not the third, so the SDK would send an
     // incomplete pair. Clearing them hands the decision to the credential chain.
     withPlatform(present: true, callback: function () {
+        $_SERVER['AWS_ACCESS_KEY_ID'] = 'ASIAROLE';
+        $role = ['key' => 'ASIAROLE', 'secret' => 'shh'];
         $app = applicationFor([
-            'queue' => ['connections' => ['sqs' => ['key' => 'AKIA', 'secret' => 'shh', 'queue' => 'default']]],
-            'filesystems' => ['disks' => ['s3' => ['key' => 'AKIA', 'secret' => 'shh']]],
-            'mail' => ['mailers' => ['ses' => ['key' => 'AKIA', 'secret' => 'shh']]],
+            'services' => ['ses' => $role + ['region' => 'us-east-1']],
+            'queue' => [
+                'connections' => ['sqs' => $role + ['queue' => 'default']],
+                'failed' => $role + ['driver' => 'dynamodb'],
+            ],
+            'filesystems' => ['disks' => ['s3' => $role, 'uploads' => $role]],
+            'cache' => ['stores' => ['dynamodb' => $role]],
+            'mail' => ['mailers' => ['ses' => $role, 'ses-v2' => ['transport' => 'ses-v2']]],
         ]);
 
         registerProvider($app);
 
         $config = $app->make('config');
 
-        expect($config->get('queue.connections.sqs.key'))->toBeNull()
-            ->and($config->get('queue.connections.sqs.secret'))->toBeNull()
-            ->and($config->get('filesystems.disks.s3.key'))->toBeNull()
-            ->and($config->get('mail.mailers.ses.secret'))->toBeNull()
-            // Untouched: the module clears credentials, not configuration.
-            ->and($config->get('queue.connections.sqs.queue'))->toBe('default');
+        foreach (['services.ses', 'queue.connections.sqs', 'queue.failed', 'filesystems.disks.s3', 'filesystems.disks.uploads', 'cache.stores.dynamodb', 'mail.mailers.ses'] as $path) {
+            expect($config->get("{$path}.key"))->toBeNull("{$path}.key")
+                ->and($config->get("{$path}.secret"))->toBeNull("{$path}.secret");
+        }
+
+        // Untouched: the module clears credentials, not configuration.
+        expect($config->get('queue.connections.sqs.queue'))->toBe('default')
+            ->and($config->get('services.ses.region'))->toBe('us-east-1')
+            ->and($config->has('mail.mailers.ses-v2.key'))->toBeFalse();
+    });
+});
+
+it('builds both SES transports without explicit credentials', function (string $mailer) {
+    // The SES transports merge `services.ses` under the mailer's own entry, and
+    // pass credentials to the client only when that merge has a key and a
+    // secret. The SDK is not installed here, so the merge is checked the way
+    // MailManager hands it to the client.
+    withPlatform(present: true, callback: function () use ($mailer) {
+        $_SERVER['AWS_ACCESS_KEY_ID'] = 'ASIAROLE';
+        $app = applicationFor([
+            'services' => ['ses' => ['key' => 'ASIAROLE', 'secret' => 'shh', 'region' => 'us-east-1']],
+            'mail' => ['mailers' => [$mailer => ['transport' => $mailer]]],
+        ]);
+
+        registerProvider($app);
+
+        $config = $app->make('config');
+        $merged = array_merge($config->get('services.ses'), $config->get("mail.mailers.{$mailer}"));
+        $client = (fn (array $config): array => $this->addSesCredentials($config))
+            ->call(new MailManager($app), $merged);
+
+        expect($client)->not->toHaveKey('credentials')
+            ->and($client['region'])->toBe('us-east-1');
+    });
+})->with(['ses', 'ses-v2']);
+
+it('keeps a key pair the application set itself', function () {
+    withPlatform(present: true, callback: function () {
+        $_SERVER['AWS_ACCESS_KEY_ID'] = 'ASIAROLE';
+        $app = applicationFor([
+            'services' => ['ses' => ['key' => 'AKIAOWN', 'secret' => 'own']],
+            'filesystems' => ['disks' => ['s3' => ['key' => 'AKIAOWN', 'secret' => 'own']]],
+        ]);
+
+        registerProvider($app);
+
+        $config = $app->make('config');
+
+        expect($config->get('services.ses'))->toBe(['key' => 'AKIAOWN', 'secret' => 'own'])
+            ->and($config->get('filesystems.disks.s3'))->toBe(['key' => 'AKIAOWN', 'secret' => 'own']);
+    });
+});
+
+it('leaves credentials alone where no execution role injects a key', function () {
+    // On GCP there is no role key: a pair in config is the application's own.
+    withPlatform(present: true, callback: function () {
+        unset($_SERVER['AWS_ACCESS_KEY_ID'], $_ENV['AWS_ACCESS_KEY_ID']);
+        $app = applicationFor(['filesystems' => ['disks' => ['s3' => ['key' => 'AKIAOWN', 'secret' => 'own']]]]);
+
+        registerProvider($app);
+
+        expect($app->make('config')->get('filesystems.disks.s3.key'))->toBe('AKIAOWN');
+    });
+});
+
+it('sets the SES region from the linked provider', function () {
+    withPlatform(present: true, callback: function () {
+        $_SERVER['AWS_SES_REGION'] = 'eu-central-1';
+        $app = applicationFor();
+
+        registerProvider($app);
+
+        expect($app->make('config')->get('services.ses.region'))->toBe('eu-central-1');
+    });
+});
+
+it('sends SES mail from the linked provider region', function () {
+    // The function runs in eu-west-1; the identity is verified in us-east-1.
+    withPlatform(present: true, callback: function () {
+        $_SERVER['AWS_DEFAULT_REGION'] = 'eu-west-1';
+        $_SERVER['AWS_SES_REGION'] = 'us-east-1';
+        $app = applicationFor([
+            'services' => ['ses' => ['key' => null, 'secret' => null, 'region' => 'eu-west-1']],
+            'mail' => ['mailers' => [
+                'ses' => ['transport' => 'ses'],
+                'ses-v2' => ['transport' => 'ses-v2', 'region' => 'eu-west-1'],
+                'smtp' => ['transport' => 'smtp'],
+            ]],
+        ]);
+
+        registerProvider($app);
+
+        $config = $app->make('config');
+
+        expect($config->get('services.ses.region'))->toBe('us-east-1')
+            ->and($config->get('mail.mailers.ses.region'))->toBe('us-east-1')
+            ->and($config->get('mail.mailers.ses-v2.region'))->toBe('us-east-1')
+            ->and($config->has('mail.mailers.smtp.region'))->toBeFalse();
+
+        // What the transport hands the SES client: the mailer merged over
+        // services.ses, as MailManager does.
+        foreach (['ses', 'ses-v2'] as $mailer) {
+            $merged = array_merge($config->get('services.ses'), $config->get("mail.mailers.{$mailer}"));
+
+            expect($merged['region'])->toBe('us-east-1');
+        }
+    });
+});
+
+it('leaves the SES region alone without a linked provider', function () {
+    withPlatform(present: true, callback: function () {
+        unset($_SERVER['AWS_SES_REGION'], $_ENV['AWS_SES_REGION']);
+        $app = applicationFor([
+            'services' => ['ses' => ['region' => 'eu-west-1']],
+            'mail' => ['mailers' => ['ses' => ['transport' => 'ses']]],
+        ]);
+
+        registerProvider($app);
+
+        $config = $app->make('config');
+
+        expect($config->get('services.ses.region'))->toBe('eu-west-1')
+            ->and($config->has('mail.mailers.ses.region'))->toBeFalse();
     });
 });
 
