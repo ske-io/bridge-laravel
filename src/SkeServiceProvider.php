@@ -53,6 +53,7 @@ final class SkeServiceProvider extends ServiceProvider
 
         $this->configureLogging();
         $this->configureAwsCredentials();
+        $this->configureSesRegion();
         $this->configureQueueConnection();
 
         $this->app->singleton(MaintenanceMode::class, fn (): MaintenanceMode => new PlatformMaintenanceMode);
@@ -150,12 +151,56 @@ final class SkeServiceProvider extends ServiceProvider
      * own config reads the first two through env() but not the third, so the SDK
      * would send an incomplete pair and be rejected. Clearing them hands the
      * decision back to the SDK's credential chain, which reads all three.
+     *
+     * Every AWS client Laravel builds from config is covered: SES reads
+     * `services.ses` (under any `ses` or `ses-v2` mailer's own keys), and any
+     * SQS connection, S3 disk, DynamoDB cache store or failed job store reads
+     * its own entry. Only a key that is the role's is cleared, so a key pair
+     * the application set itself still wins.
      */
     private function configureAwsCredentials(): void
     {
-        foreach (['queue.connections.sqs', 'filesystems.disks.s3', 'mail.mailers.ses'] as $path) {
-            if (config()->has("{$path}.key")) {
+        $roleKey = Environment::get('AWS_ACCESS_KEY_ID');
+
+        if ($roleKey === null) {
+            return;
+        }
+
+        $paths = ['services.ses', 'queue.failed'];
+
+        foreach (['queue.connections', 'filesystems.disks', 'cache.stores', 'mail.mailers'] as $group) {
+            foreach (array_keys((array) config($group, [])) as $name) {
+                $paths[] = "{$group}.{$name}";
+            }
+        }
+
+        foreach ($paths as $path) {
+            if (config("{$path}.key") === $roleKey) {
                 config(["{$path}.key" => null, "{$path}.secret" => null]);
+            }
+        }
+    }
+
+    /**
+     * A linked SMTP provider's SES identity is verified in its own region,
+     * which the deploy sets as AWS_SES_REGION alongside MAIL_MAILER=ses. Laravel
+     * reads the SES region from AWS_DEFAULT_REGION, the function's own region,
+     * so mail would go to a region where the identity does not exist. The
+     * platform's region wins: the deploy only sets it for its own provider.
+     */
+    private function configureSesRegion(): void
+    {
+        $region = Environment::get('AWS_SES_REGION');
+
+        if ($region === null) {
+            return;
+        }
+
+        config(['services.ses.region' => $region]);
+
+        foreach ((array) config('mail.mailers', []) as $name => $mailer) {
+            if (in_array($mailer['transport'] ?? null, ['ses', 'ses-v2'], true)) {
+                config(["mail.mailers.{$name}.region" => $region]);
             }
         }
     }
