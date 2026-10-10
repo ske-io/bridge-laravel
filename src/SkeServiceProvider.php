@@ -13,14 +13,18 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Inertia\Ssr\Gateway;
+use Inertia\Ssr\HttpGateway;
 use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\StreamHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
+use RuntimeException;
 use Ske\Bridge\Laravel\Handlers\QueueHandler;
 use Ske\Bridge\Laravel\Http\Controllers\SignedStorageUrlController;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
 use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
+use Ske\Bridge\Laravel\Inertia\InertiaSsrGateway;
 use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
 use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
@@ -70,6 +74,7 @@ final class SkeServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->configureInertiaSsr();
         $this->trustPlatformProxy();
         $this->registerRoutes();
 
@@ -77,6 +82,35 @@ final class SkeServiceProvider extends ServiceProvider
         // probes /up for readiness; maintenance only closes the application
         // to its visitors.
         PreventRequestsDuringMaintenance::except(['__ske/*', 'up']);
+    }
+
+    private function configureInertiaSsr(): void
+    {
+        $enabled = Environment::get('SKE_SSR_ENABLED');
+
+        if ($enabled === null) {
+            return;
+        }
+
+        if (! filter_var($enabled, FILTER_VALIDATE_BOOLEAN)) {
+            if (interface_exists(Gateway::class)) {
+                config(['inertia.ssr.enabled' => false]);
+            }
+
+            return;
+        }
+
+        if (! class_exists(HttpGateway::class)) {
+            throw new RuntimeException('Inertia SSR is enabled, but inertiajs/inertia-laravel is not installed.');
+        }
+
+        if (! config('inertia.ssr.enabled')
+            || rtrim((string) config('inertia.ssr.url'), '/') !== rtrim(Environment::get('INERTIA_SSR_URL') ?? 'http://127.0.0.1:13714', '/')) {
+            throw new RuntimeException('config/inertia.php must honor INERTIA_SSR_ENABLED and INERTIA_SSR_URL for this environment.');
+        }
+
+        $this->app->singleton(HttpGateway::class, InertiaSsrGateway::class);
+        $this->app->bind(Gateway::class, HttpGateway::class);
     }
 
     /**

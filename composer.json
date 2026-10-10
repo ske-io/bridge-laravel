@@ -33,7 +33,8 @@
         }
     },
     "suggest": {
-        "aws/aws-sdk-php": "Required on AWS for the default ske queue connection, which sends jobs to SQS."
+        "aws/aws-sdk-php": "Required on AWS for the default ske queue connection, which sends jobs to SQS.",
+        "inertiajs/inertia-laravel": "Required only for applications opting into Inertia SSR."
     },
     "minimum-stability": "stable",
     "config": {
