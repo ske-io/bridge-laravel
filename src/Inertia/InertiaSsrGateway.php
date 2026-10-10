@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Ske\Bridge\Laravel\Inertia;
 
-use Composer\InstalledVersions;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\StrayRequestException;
 use Illuminate\Http\Request;
@@ -13,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Ssr\HttpGateway;
 use Inertia\Ssr\Response;
 use Inertia\Ssr\SsrRenderFailed;
+use ReflectionClass;
+use ReflectionMethod;
 use Ske\Bridge\Laravel\Runtime\Environment;
 use Throwable;
 
@@ -26,7 +27,13 @@ final class InertiaSsrGateway extends HttpGateway
     /** @param array<string, mixed> $page */
     public function dispatch(array $page, ?Request $request = null): ?Response
     {
-        if (! $this->ssrIsEnabled($request ?? request())) {
+        // Inertia 2 has no request parameter; Inertia 3 uses it for excluded paths.
+        $enabled = new ReflectionMethod(HttpGateway::class, 'ssrIsEnabled');
+        $arguments = $enabled->getNumberOfParameters() > 0
+            ? [$request ?? request()]
+            : [];
+
+        if ($enabled->invoke($this, ...$arguments) !== true) {
             return null;
         }
 
@@ -98,8 +105,10 @@ final class InertiaSsrGateway extends HttpGateway
 
     private function ssrRequest(): PendingRequest
     {
-        return version_compare(InstalledVersions::getVersion('inertiajs/inertia-laravel') ?? '0', '3.4.0', '>=')
-            ? $this->pendingRequest()
+        $gateway = new ReflectionClass(HttpGateway::class);
+
+        return $gateway->hasMethod('pendingRequest')
+            ? $gateway->getMethod('pendingRequest')->invoke($this)
             : Http::createPendingRequest();
     }
 

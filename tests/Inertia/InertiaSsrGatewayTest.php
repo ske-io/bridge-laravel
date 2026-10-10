@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Composer\InstalledVersions;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Events\Dispatcher;
@@ -145,18 +144,20 @@ it('keeps Inertia conditional disabling and excluded paths', function () {
     withSsrApplication(function (Application $app): void {
         $gateway = new InertiaSsrGateway;
 
-        if (version_compare(InstalledVersions::getVersion('inertiajs/inertia-laravel') ?? '0', '3.0', '<')) {
+        $methods = new ReflectionClass(HttpGateway::class);
+
+        if (! $methods->hasMethod('except')) {
             $app->make('config')->set('inertia.ssr.enabled', false);
         } else {
-            $gateway->except('/');
+            $methods->getMethod('except')->invoke($gateway, '/excluded');
         }
 
-        expect($gateway->dispatch(['component' => 'Home']))->toBeNull();
+        expect($gateway->dispatch(['component' => 'Home'], Request::create('/excluded')))->toBeNull();
         Http::assertNothingSent();
 
-        if (version_compare(InstalledVersions::getVersion('inertiajs/inertia-laravel') ?? '0', '3.0', '>=')) {
+        if ($methods->hasMethod('disable')) {
             $gateway = new InertiaSsrGateway;
-            $gateway->disable(fn (): bool => true);
+            $methods->getMethod('disable')->invoke($gateway, fn (): bool => true);
             expect($gateway->dispatch(['component' => 'Home']))->toBeNull();
             Http::assertNothingSent();
         }
@@ -167,13 +168,15 @@ it('keeps Inertia request configurators while enforcing the platform timeout', f
     withSsrApplication(function (Application $app): void {
         $gateway = new InertiaSsrGateway;
 
-        if (version_compare(InstalledVersions::getVersion('inertiajs/inertia-laravel') ?? '0', '3.4.0', '<')) {
+        $methods = new ReflectionClass(HttpGateway::class);
+
+        if (! $methods->hasMethod('configureRequestUsing')) {
             expect($gateway)->toBeInstanceOf(HttpGateway::class);
 
             return;
         }
 
-        $gateway->configureRequestUsing(fn ($request) => $request->withHeaders(['X-Renderer-Token' => 'configured'])->timeout(30));
+        $methods->getMethod('configureRequestUsing')->invoke($gateway, fn ($request) => $request->withHeaders(['X-Renderer-Token' => 'configured'])->timeout(30));
 
         Http::fake(function (ClientRequest $request, array $options) {
             expect($request->hasHeader('X-Renderer-Token', 'configured'))->toBeTrue()
