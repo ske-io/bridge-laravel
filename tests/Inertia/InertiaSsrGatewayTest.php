@@ -21,6 +21,12 @@ use Monolog\Logger;
 use Ske\Bridge\Laravel\Inertia\InertiaSsrGateway;
 use Ske\Bridge\Laravel\SkeServiceProvider;
 
+beforeEach(function () {
+    if (! class_exists(HttpGateway::class)) {
+        $this->markTestSkipped('Install inertiajs/inertia-laravel to run the optional SSR integration tests.');
+    }
+});
+
 /** @param Closure(Application): void $callback */
 function withSsrApplication(Closure $callback): void
 {
