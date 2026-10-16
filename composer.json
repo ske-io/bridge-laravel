@@ -1,5 +1,5 @@
 {
-    "name": "ske/laravel-bridge",
+    "name": "ske-io/laravel-bridge",
     "description": "Runs a Laravel application on SKE: HTTP, queue and console",
     "type": "library",
     "license": "MIT",
