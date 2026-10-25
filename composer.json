@@ -17,8 +17,7 @@
         "pestphp/pest": "^4.7",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-mockery": "^2.0",
-        "laravel/pint": "^1.27",
-        "laravel/octane": "^2.22"
+        "laravel/pint": "^1.27"
     },
     "autoload": {
         "files": [
@@ -35,8 +34,7 @@
     },
     "suggest": {
         "aws/aws-sdk-php": "Required on AWS for the default ske queue connection, which sends jobs to SQS.",
-        "inertiajs/inertia-laravel": "Required only for applications opting into Inertia SSR.",
-        "laravel/octane": "Required at ^2.22 in production dependencies when enabling Octane HTTP execution on AWS."
+        "inertiajs/inertia-laravel": "Required only for applications opting into Inertia SSR."
     },
     "minimum-stability": "stable",
     "config": {

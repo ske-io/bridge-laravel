@@ -35,26 +35,6 @@ composer require aws/aws-sdk-php
 
 The bridge trusts no proxy. On the platform the request reaches Laravel over HTTPS on its real host, from the address that connected to the platform, so `Request::ip()` and `url()` are right with no configuration, as behind nginx on a server. Behind a CDN such as Cloudflare, that address is the CDN's: trust the CDN's published ranges with `$middleware->trustProxies(at: [...])` in `bootstrap/app.php`, never `*`. See [Behind a CDN or proxy](https://ske.io/docs/laravel#behind-a-cdn-or-proxy).
 
-## Laravel Octane
-
-Octane is an optional HTTP execution mode on AWS Lambda. Install it as a production dependency:
-
-```bash
-composer require 'laravel/octane:^2.22'
-ske settings runtime octane=true
-ske deploy
-```
-
-This mode supports Laravel 11–13 and PHP 8.3–8.5. Laravel stays booted between HTTP requests. Queues, scheduled tasks, and Artisan commands keep their existing execution paths. PHP-FPM remains the default when Octane is disabled.
-
-The bridge captures each response, runs termination callbacks and Octane cleanup, and only then returns the response to the adapter. A lifecycle failure fails the invocation and discards the worker; the adapter does not replay the request. Application side effects may already have occurred. Workers also retire after 250 requests by default; set a positive `octane-max-requests` runtime setting to change the limit.
-
-Forms, sessions, cookies, nested uploads, and downloads retain their Laravel behavior. Finite streamed responses are buffered while their request context is active. Platform body limits and deadlines apply; live streaming and SSE are unavailable. The adapter parses multipart requests with Go's standard library and owns temporary upload files until lifecycle completion. No multipart-parser package is required in the application.
-
-Applications must follow Laravel's Octane compatibility guidance: do not retain request-specific state in static variables or long-lived singletons. This mode does not run Swoole, RoadRunner, or FrankenPHP servers. Server-specific task workers, shared tables, timers, and Octane server management commands are unavailable; use queues and scheduled tasks for durable background work.
-
-Deploy the coordinated adapter, runtime, and bridge changes together. Before releasing this mode, validate warm invocations and freeze/thaw behavior on a disposable AWS environment, including validation redirects, two independent browser sessions, authentication, termination failures, and worker retirement. Cloud Run is not supported by this mode yet.
-
 ## Documentation
 
 - [Laravel on SKE](https://ske.io/docs/laravel)
