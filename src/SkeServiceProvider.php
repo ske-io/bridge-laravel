@@ -23,7 +23,6 @@ use Ske\Bridge\Laravel\Handlers\QueueHandler;
 use Ske\Bridge\Laravel\Http\Controllers\SignedStorageUrlController;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
-use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
 use Ske\Bridge\Laravel\Inertia\InertiaSsrGateway;
 use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
 use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
@@ -75,7 +74,7 @@ final class SkeServiceProvider extends ServiceProvider
         }
 
         $this->configureInertiaSsr();
-        $this->trustPlatformProxy();
+        $this->correlateRequests();
         $this->registerRoutes();
 
         // The adapter delivers queue jobs through the internal route and
@@ -114,20 +113,23 @@ final class SkeServiceProvider extends ServiceProvider
     }
 
     /**
-     * Requests arrive through the platform's load balancer and the adapter, so
-     * the forwarded scheme, host and client address are the real ones. Pushed
-     * onto the HTTP kernel rather than left to the application's own middleware
-     * list, because a deployment should not have to know this.
+     * Tags each request's logs with the platform's request ID. Pushed onto the
+     * HTTP kernel rather than left to the application's own middleware list,
+     * because a deployment should not have to know this.
+     *
+     * Proxy trust is deliberately left to the application. The adapter hands
+     * PHP the address the platform saw connect as REMOTE_ADDR, with the real
+     * scheme and host, so with no trusted proxies Request::ip() and url() are
+     * already right. An application behind a CDN trusts that CDN's ranges with
+     * its usual trustProxies() configuration, as it would behind nginx.
      */
-    private function trustPlatformProxy(): void
+    private function correlateRequests(): void
     {
         if ($this->app->runningInConsole()) {
             return;
         }
 
-        $kernel = $this->app->make(HttpKernel::class);
-        $kernel->prependMiddleware(TrustPlatformProxy::class);
-        $kernel->pushMiddleware(CorrelateRequests::class);
+        $this->app->make(HttpKernel::class)->pushMiddleware(CorrelateRequests::class);
     }
 
     private function registerRoutes(): void

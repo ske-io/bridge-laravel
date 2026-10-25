@@ -27,7 +27,6 @@ use Monolog\Level;
 use Monolog\LogRecord;
 use Ske\Bridge\Laravel\Http\Middleware\CorrelateRequests;
 use Ske\Bridge\Laravel\Http\Middleware\EnsureSkeInternal;
-use Ske\Bridge\Laravel\Http\TrustPlatformProxy;
 use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
 use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
@@ -590,7 +589,9 @@ it('defines no ske queue when the deploy names no provider', function () {
 
 // --- the HTTP kernel -----------------------------------------------------
 
-it('teaches the HTTP kernel to trust the platform proxy and correlate requests', function () {
+it('correlates requests and leaves proxy trust to the application', function () {
+    // The application decides which proxies to trust, as it would behind nginx;
+    // the bridge adds nothing in front of its middleware.
     withPlatform(present: true, callback: function () {
         $_SERVER['APP_RUNNING_IN_CONSOLE'] = 'false';
 
@@ -600,7 +601,7 @@ it('teaches the HTTP kernel to trust the platform proxy and correlate requests',
 
         registerProvider($app)->boot();
 
-        expect($kernel->prepended)->toBe([TrustPlatformProxy::class])
+        expect($kernel->prepended)->toBe([])
             ->and($kernel->pushed)->toBe([CorrelateRequests::class]);
     });
 });
@@ -618,9 +619,9 @@ it('does not reach for an HTTP kernel in a console process', function () {
 });
 
 /**
- * A kernel that records what was prepended rather than running it through a
- * middleware pipeline. Extends the concrete class because that is what the
- * provider resolves — the contract does not declare prependMiddleware().
+ * A kernel that records the middleware added to it rather than running it
+ * through a pipeline. Extends the concrete class because that is what the
+ * provider resolves — the contract does not declare the middleware methods.
  */
 final class RecordingHttpKernel extends HttpKernel
 {

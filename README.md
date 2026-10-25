@@ -25,12 +25,15 @@ composer require aws/aws-sdk-php
 
 - **Queues:** adds the `ske` queue connection (SQS on AWS, Cloud Tasks on GCP) and runs the jobs the platform delivers, recording failures in the application's failed jobs store.
 - **Logs:** writes logs to stderr, one JSON line per record, so the platform's log viewer shows level, message, context and exception.
-- **Proxies:** trusts the platform's load balancer, so the request's scheme, host and client address are the real ones.
 - **AWS credentials:** lets the AWS SDK use the function role's temporary credentials. A key pair the application sets itself still wins.
 - **Mail:** sends SES mail from the region of the mail provider linked to the environment.
 - **Maintenance mode:** follows the maintenance mode set in the SKE dashboard. See [Maintenance mode](https://ske.io/docs/deployments/maintenance).
 - **Encrypted environment file:** loads the environment's `.env.{environment}.encrypted` when its key is set. See [Encrypted environment file](https://ske.io/docs/laravel/encrypted-environment).
 - **Inertia SSR:** when SSR is turned on for the environment, sends Inertia's render calls to the platform's SSR server. This needs `inertiajs/inertia-laravel`.
+
+## Client address and proxies
+
+The bridge trusts no proxy. On the platform the request reaches Laravel over HTTPS on its real host, from the address that connected to the platform, so `Request::ip()` and `url()` are right with no configuration, as behind nginx on a server. Behind a CDN such as Cloudflare, that address is the CDN's: trust the CDN's published ranges with `$middleware->trustProxies(at: [...])` in `bootstrap/app.php`, never `*`. See [Behind a CDN or proxy](https://ske.io/docs/laravel#behind-a-cdn-or-proxy).
 
 ## Documentation
 
