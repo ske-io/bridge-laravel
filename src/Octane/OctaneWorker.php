@@ -10,6 +10,7 @@ use Laravel\Octane\Events\WorkerErrorOccurred;
 use Laravel\Octane\RequestContext;
 use Laravel\Octane\Worker;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 use Throwable;
 
 final class OctaneWorker
@@ -74,7 +75,13 @@ final class OctaneWorker
         $this->client->maxResponseBody = max(1, (int) ($envelope['max_response_body'] ?? 10485760));
 
         try {
-            [$request, $context] = $this->client->marshalRequest(new RequestContext($envelope));
+            try {
+                [$request, $context] = $this->client->marshalRequest(new RequestContext($envelope));
+            } catch (BadRequestException) {
+                // A request the application never saw leaves nothing to retire for.
+                return self::badRequest();
+            }
+
             $_SERVER = array_replace($server, $request->server->all());
             $_GET = $request->query->all();
             $_POST = $request->request->all();
@@ -95,6 +102,9 @@ final class OctaneWorker
 
             return [...$response, 'retire' => $this->terminated];
         } catch (Throwable $e) {
+            // The response carries no detail, so this is the only record of
+            // why the request failed before or after the application ran.
+            error_log('Octane request lifecycle failed: '.$e::class.': '.$e->getMessage());
             $this->client->stop();
 
             try {
@@ -114,6 +124,16 @@ final class OctaneWorker
             $_ENV = $env;
             $_GET = $_POST = $_COOKIE = $_REQUEST = $_FILES = [];
         }
+    }
+
+    /** @return array<string, mixed> */
+    private static function badRequest(): array
+    {
+        $body = "Bad Request\n";
+
+        return ['version' => 1, 'status' => 400, 'headers' => [
+            'content-type' => ['text/plain; charset=UTF-8'], 'content-length' => [(string) strlen($body)],
+        ], 'body' => base64_encode($body), 'retire' => false];
     }
 
     public function shutdown(): void

@@ -7,6 +7,7 @@ namespace Ske\Bridge\Laravel\Octane;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Exception\BadRequestException;
 
 final class FramedRequest
 {
@@ -86,14 +87,34 @@ final class FramedRequest
 
         $server['REQUEST_TIME_FLOAT'] = microtime(true);
         $server['REQUEST_TIME'] = time();
+        $host = (string) ($envelope['host'] ?? '');
+
+        if ($host !== '' && ! self::isAuthority($host)) {
+            throw new BadRequestException('Invalid Host header.');
+        }
+
+        // A request without a Host header, such as a warm-up ping, has no
+        // authority of its own. A placeholder keeps a path that starts with
+        // two slashes a path, rather than the host.
         $request = Request::create(
-            $envelope['scheme'].'://'.$envelope['host'].$envelope['uri'],
+            $envelope['scheme'].'://'.($host === '' ? 'localhost' : $host).$envelope['uri'],
             $envelope['method'], $parameters, $cookies, $files, $server, $body,
         );
         $request->headers->add($headers);
-        $request->headers->set('host', $envelope['host']);
+
+        if ($host !== '') {
+            $request->headers->set('host', $host);
+        }
 
         return $request;
+    }
+
+    /** A host and optional port, with nothing that would change the URI around it. */
+    private static function isAuthority(string $host): bool
+    {
+        $parts = parse_url('http://'.$host);
+
+        return is_array($parts) && isset($parts['host']) && array_diff(array_keys($parts), ['scheme', 'host', 'port']) === [];
     }
 
     /**
