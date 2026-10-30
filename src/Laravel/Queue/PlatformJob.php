@@ -7,6 +7,7 @@ namespace Ske\Bridge\Laravel\Queue;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Queue\Job as JobContract;
 use Illuminate\Queue\Jobs\Job;
+use Ske\Bridge\Queue\JobOutcome;
 use Throwable;
 
 /**

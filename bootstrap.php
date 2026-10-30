@@ -3,13 +3,20 @@
 declare(strict_types=1);
 
 use Composer\InstalledVersions;
+use Illuminate\Foundation\Application;
 use Ske\Bridge\Laravel\Runtime\EncryptedEnvironment;
-use Ske\Bridge\Laravel\Runtime\Environment;
 use Ske\Bridge\Laravel\SkeServiceProvider;
+use Ske\Bridge\Runtime\Environment;
 
 // Loaded through Composer's autoload.files, so this runs when the application
 // requires vendor/autoload.php: before bootstrap/app.php, before the container,
 // before PackageManifest discovers a single provider.
+
+// Composer loads this file in every application that requires the package, so
+// it does nothing unless the application is a Laravel application.
+if (! class_exists(Application::class)) {
+    return;
+}
 
 if (! SkeServiceProvider::runningOnPlatform()) {
     return;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Ske\Bridge\Laravel\Queue;
+namespace Ske\Bridge\Queue;
 
 /**
  * What the platform should do with one message now that the worker has run it.

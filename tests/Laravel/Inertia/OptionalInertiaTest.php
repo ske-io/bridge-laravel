@@ -44,7 +44,7 @@ it('boots without Inertia unless SSR is explicitly enabled', function (?string $
     }
     PHP;
 
-    $process = new Process([PHP_BINARY], dirname(__DIR__, 2), [
+    $process = new Process([PHP_BINARY], dirname(__DIR__, 3), [
         'SKE_ENVIRONMENT' => false,
         'SKE_PROJECT_TYPE' => false,
         'SKE_SSR_ENABLED' => $enabled ?? false,

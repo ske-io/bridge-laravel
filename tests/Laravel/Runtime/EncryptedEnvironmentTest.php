@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Env;
 use Ske\Bridge\Laravel\Runtime\EncryptedEnvironment;
-use Ske\Bridge\Laravel\Runtime\Environment;
+use Ske\Bridge\Runtime\Environment;
 
 const ENCRYPTED_VARIABLES = ['LARAVEL_ENV_ENCRYPTION_KEY', 'SKE_TEST_ENC_MAIL', 'SKE_TEST_ENC_DB_HOST', 'SKE_TEST_ENC_QUOTED'];
 

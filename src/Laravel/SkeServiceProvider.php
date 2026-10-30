@@ -28,8 +28,8 @@ use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
 use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
 use Ske\Bridge\Laravel\Queue\SqsConnector;
-use Ske\Bridge\Laravel\Runtime\Environment;
 use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
+use Ske\Bridge\Runtime\Environment;
 
 /**
  * Wires what a deployment needs: HTTP, delivered queue jobs, and the setup
@@ -44,7 +44,7 @@ use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
  */
 final class SkeServiceProvider extends ServiceProvider
 {
-    private const CONFIG = __DIR__.'/../config/ske.php';
+    private const CONFIG = __DIR__.'/../../config/ske.php';
 
     public function register(): void
     {

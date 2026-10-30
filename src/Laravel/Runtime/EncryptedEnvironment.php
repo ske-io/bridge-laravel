@@ -13,6 +13,7 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Env;
 use RuntimeException;
+use Ske\Bridge\Runtime\Environment;
 
 /**
  * Laravel's encrypted environment file, the one `php artisan env:encrypt

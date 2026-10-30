@@ -13,6 +13,7 @@ use Illuminate\Queue\ManuallyFailedException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Queue\Worker;
 use Illuminate\Queue\WorkerOptions;
+use Ske\Bridge\Queue\JobOutcome;
 use Throwable;
 
 /**

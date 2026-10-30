@@ -14,7 +14,7 @@ use Inertia\Ssr\Response;
 use Inertia\Ssr\SsrRenderFailed;
 use ReflectionClass;
 use ReflectionMethod;
-use Ske\Bridge\Laravel\Runtime\Environment;
+use Ske\Bridge\Runtime\Environment;
 use Throwable;
 
 /**

@@ -1,6 +1,6 @@
-# SKE Laravel bridge
+# SKE PHP bridge
 
-`ske-io/laravel-bridge` runs a Laravel application on [SKE](https://ske.io), which deploys it into your own AWS or GCP account. It connects the application's HTTP requests, queued jobs, commands and scheduler to the platform.
+`ske-io/php-bridge` runs a Laravel application on [SKE](https://ske.io), which deploys it into your own AWS or GCP account. It connects the application's HTTP requests, queued jobs, commands and scheduler to the platform.
 
 ## Requirements
 
@@ -10,7 +10,7 @@
 ## Installation
 
 ```bash
-composer require ske-io/laravel-bridge
+composer require ske-io/php-bridge
 ```
 
 Laravel discovers the service provider, so there is nothing to register or configure. Off the platform the bridge stays inactive, apart from the [upload endpoint](https://ske.io/docs/laravel/uploads), so the same application runs locally as before.

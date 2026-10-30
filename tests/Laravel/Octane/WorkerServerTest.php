@@ -56,8 +56,8 @@ function workerExchange(string $socket, array $request): array
 it('serves isolated warm requests over the real worker socket and exits after its final response', function () {
     $directory = octaneApplicationDirectory();
     $socket = $directory.'/worker.sock';
-    symlink(dirname(__DIR__, 2).'/vendor', $directory.'/vendor');
-    $process = new Process([PHP_BINARY, dirname(__DIR__, 2).'/bin/octane-worker'], $directory, [
+    symlink(dirname(__DIR__, 3).'/vendor', $directory.'/vendor');
+    $process = new Process([PHP_BINARY, dirname(__DIR__, 3).'/bin/octane-worker'], $directory, [
         'SKE_PROVIDER' => 'aws', 'SKE_WORKER_SOCKET' => $socket, 'SKE_WORKER_MAX_REQUESTS' => '3',
         'SKE_PROJECT_TYPE' => 'laravel', 'SKE_ENVIRONMENT' => 'testing',
     ]);
@@ -102,7 +102,7 @@ it('serves isolated warm requests over the real worker socket and exits after it
 it('recovers a socket left in tmp by a killed worker', function () {
     $directory = octaneApplicationDirectory();
     $socket = $directory.'/worker.sock';
-    symlink(dirname(__DIR__, 2).'/vendor', $directory.'/vendor');
+    symlink(dirname(__DIR__, 3).'/vendor', $directory.'/vendor');
     $old = stream_socket_server('unix://'.$socket);
 
     if ($old === false) {
@@ -110,7 +110,7 @@ it('recovers a socket left in tmp by a killed worker', function () {
     }
 
     fclose($old);
-    $process = new Process([PHP_BINARY, dirname(__DIR__, 2).'/bin/octane-worker'], $directory, [
+    $process = new Process([PHP_BINARY, dirname(__DIR__, 3).'/bin/octane-worker'], $directory, [
         'SKE_PROVIDER' => 'aws', 'SKE_WORKER_SOCKET' => $socket, 'SKE_WORKER_MAX_REQUESTS' => '1',
         'SKE_PROJECT_TYPE' => 'laravel', 'SKE_ENVIRONMENT' => 'testing',
     ]);
@@ -155,8 +155,8 @@ it('recovers a socket left in tmp by a killed worker', function () {
 it('withholds the socket response until termination finishes and is safe to freeze immediately afterward', function () {
     $directory = octaneApplicationDirectory();
     $socket = $directory.'/worker.sock';
-    symlink(dirname(__DIR__, 2).'/vendor', $directory.'/vendor');
-    $process = new Process([PHP_BINARY, dirname(__DIR__, 2).'/bin/octane-worker'], $directory, [
+    symlink(dirname(__DIR__, 3).'/vendor', $directory.'/vendor');
+    $process = new Process([PHP_BINARY, dirname(__DIR__, 3).'/bin/octane-worker'], $directory, [
         'SKE_PROVIDER' => 'aws', 'SKE_WORKER_SOCKET' => $socket, 'SKE_WORKER_MAX_REQUESTS' => '250',
         'SKE_PROJECT_TYPE' => 'laravel', 'SKE_ENVIRONMENT' => 'testing',
     ]);
