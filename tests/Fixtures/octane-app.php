@@ -17,6 +17,10 @@ $app = Application::configure($_SERVER['APP_BASE_PATH'])
     ->withProviders([OctaneServiceProvider::class, SkeServiceProvider::class])
     ->withRouting(using: function (): void {
         Route::get('/identity', fn () => response()->json(['user' => auth('fixture')->id(), 'request_id' => request()->header('X-Request-Id')]));
+        Route::get('/origin', fn (Request $request) => response()->json([
+            'host' => $request->getHost(), 'scheme' => $request->getScheme(), 'port' => $request->getPort(),
+            'path' => $request->path(),
+        ]));
         Route::get('/basic-auth', fn (Request $request) => response()->json([
             'user' => $request->getUser(), 'password' => $request->getPassword(),
             'authorization' => $_SERVER['HTTP_AUTHORIZATION'] ?? null,

@@ -82,6 +82,39 @@ it('preserves HTTP Basic authentication and native server headers', function () 
     }
 });
 
+it('serves a request that carries no host, such as a warm-up ping', function () {
+    [$directory, $worker] = octaneApplication();
+
+    try {
+        $response = $worker->handle([...octaneRequest('/origin'), 'host' => '']);
+        $next = $worker->handle(octaneRequest('/origin'));
+
+        expect($response)->toMatchArray(['status' => 200, 'retire' => false]);
+        expect(json_decode(base64_decode($response['body']), true))
+            ->toBe(['host' => 'localhost', 'scheme' => 'https', 'port' => 443, 'path' => 'origin']);
+        expect(json_decode(base64_decode($next['body']), true))
+            ->toBe(['host' => 'example.test', 'scheme' => 'https', 'port' => 443, 'path' => 'origin']);
+    } finally {
+        $worker->shutdown();
+        (new Filesystem)->deleteDirectory($directory);
+    }
+});
+
+it('answers a host the request cannot be built from with 400 and stays in service', function (string $host) {
+    [$directory, $worker] = octaneApplication();
+
+    try {
+        $invalid = $worker->handle([...octaneRequest('/origin'), 'host' => $host]);
+        $next = $worker->handle(octaneRequest('/origin'));
+
+        expect($invalid)->toMatchArray(['status' => 400, 'retire' => false]);
+        expect($next)->toMatchArray(['status' => 200, 'retire' => false]);
+    } finally {
+        $worker->shutdown();
+        (new Filesystem)->deleteDirectory($directory);
+    }
+})->with(['h:99999', 'evil.com/x?', 'evil.com#x', 'user@evil.com']);
+
 it('discards a captured success when termination throws and refuses another request', function () {
     [$directory, $worker] = octaneApplication();
 
