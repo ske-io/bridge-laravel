@@ -12,14 +12,15 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * Refuses anything reaching the platform's own routes from outside.
  *
- * The adapter already answers 404 for these paths and strips the marking header
- * from inbound traffic, so this is the second of two locks rather than the only
- * one. It exists because the first one lives in a different process: if the
- * application is ever fronted by something else, this still holds.
+ * The container's entry process already answers 404 for these paths and strips
+ * the marking header from inbound traffic, so this is the second of two locks
+ * rather than the only one. It exists because the first one lives in a
+ * different process: if the application is ever fronted by something else,
+ * this still holds.
  *
  * A missing or wrong header is answered as though the route did not exist,
- * which is what the adapter does too — telling a caller that these paths are
- * here and merely forbidden is more than they need to know.
+ * which is what the entry process does too — telling a caller that these paths
+ * are here and merely forbidden is more than they need to know.
  */
 final class EnsureSkeInternal
 {

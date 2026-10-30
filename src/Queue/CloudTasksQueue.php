@@ -18,15 +18,15 @@ use UnitEnum;
 /**
  * Sends jobs to Google Cloud Tasks, the GCP counterpart of the SQS queue.
  *
- * Every task goes to the Cloud Tasks queue `{prefix}{queue}`, which the deploy
- * engine creates for each of the environment's queues and points at the Cloud
+ * Every task goes to the Cloud Tasks queue `{prefix}{queue}`, which the platform
+ * creates for each of the environment's queues and points at the Cloud
  * Run service that works it: the queue's own HTTP target replaces the scheme
  * and host of whatever URL a task names, and signs each push with an identity
  * token for the environment's service account. So a task only carries the job
  * payload — no service URL and no token of its own, which also means creating
  * one needs nothing beyond `cloudtasks.tasks.create`.
  *
- * The adapter in front of the queue service recognises the push, verifies the
+ * The platform, in front of the queue service, recognises the push, verifies the
  * token and hands the job to QueueRunner the same way it hands over an SQS
  * message. Nothing is ever popped: the platform delivers.
  *
@@ -45,9 +45,9 @@ final class CloudTasksQueue extends Queue implements QueueContract
 
     /**
      * The URL every task names. The queue's HTTP target overrides its scheme and
-     * host, so only the path reaches the service, and the adapter recognises a
+     * host, so only the path reaches the service, and the platform recognises a
      * push by its Cloud Tasks headers wherever it is sent. The path must not be
-     * under /__ske/, which the adapter refuses from outside.
+     * under /__ske/, which the platform refuses from outside.
      */
     public const string TASK_URL = 'https://cloudtasks.invalid/';
 
@@ -201,7 +201,7 @@ final class CloudTasksQueue extends Queue implements QueueContract
     }
 
     /**
-     * Creates the task and returns its id, which is the message id the adapter
+     * Creates the task and returns its id, which is the message id the platform
      * reports when the task comes back as a queue record.
      *
      * @param  UnitEnum|string|null  $queue

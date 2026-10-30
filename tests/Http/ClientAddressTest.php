@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * The bridge trusts no proxy: the adapter hands PHP the address that connected
+ * The bridge trusts no proxy: the platform hands PHP the address that connected
  * to the platform as REMOTE_ADDR, with HTTPS and the real host, as nginx does
  * on a server. Proxy trust is the application's own Laravel configuration,
  * run here through the framework's TrustProxies middleware as it would be in
@@ -30,7 +30,7 @@ afterEach(function (): void {
 });
 
 /**
- * A request as the adapter hands it to PHP: HTTPS on the real host, from the
+ * A request as the platform hands it to PHP: HTTPS on the real host, from the
  * address the platform saw connect.
  *
  * @param  array<string, string>  $headers

@@ -12,14 +12,14 @@ use Throwable;
 /**
  * One queue message delivered by the platform rather than fetched from a broker.
  *
- * The adapter holds the broker connection and the message's receipt handle; the
+ * The platform holds the broker connection and the message's receipt handle; the
  * application never sees either. So this records what the worker decided —
  * deleted, released, failed — instead of acting on the queue itself, and the
- * adapter carries the decision out.
+ * platform carries the decision out.
  *
  * Failing goes through Laravel's own path: the job's failed() hook, the
  * JobFailed event, and (in QueueRunner) the failed_jobs record. A failed job is
- * finished: the adapter acknowledges it, or keeps it as a dead letter when no
+ * finished: the platform acknowledges it, or keeps it as a dead letter when no
  * failed_jobs record holds it.
  */
 final class PlatformJob extends Job implements JobContract
@@ -72,7 +72,7 @@ final class PlatformJob extends Job implements JobContract
 
     /**
      * Laravel's failure handling, keeping the exception for the failed_jobs
-     * record and its message for the adapter's log.
+     * record and its message for the platform's log.
      *
      * @param  Throwable|null  $e
      */
@@ -93,7 +93,7 @@ final class PlatformJob extends Job implements JobContract
 
     /**
      * Keeps an error that did not fail the job — one the worker rethrew after
-     * releasing it — for the adapter's log.
+     * releasing it — for the platform's log.
      */
     public function recordError(Throwable $e): void
     {
@@ -136,7 +136,7 @@ final class PlatformJob extends Job implements JobContract
     }
 
     /**
-     * The outcome the adapter needs in order to settle this message: failed
+     * The outcome the platform needs in order to settle this message: failed
      * (finished; kept as a dead letter when unrecorded), released (deliver
      * again) or deleted (done).
      */

@@ -31,9 +31,9 @@ use Ske\Bridge\Laravel\Queue\QueueRunner;
 
 /*
  * A job's whole round trip with the framework's real Worker: dispatched through
- * the Cloud Tasks queue, handed back as the record the adapter builds from the
- * push, and run by QueueRunner. What the outcome says is what the adapter acts
- * on: deleted and failed are acknowledged (2xx), released is delivered again
+ * the Cloud Tasks queue, handed back as the record the platform builds from
+ * the push, and run by QueueRunner. What the outcome says is what the platform
+ * acts on: deleted and failed are acknowledged (2xx), released is delivered again
  * (non-2xx on Cloud Tasks, a batch item failure on SQS).
  */
 
@@ -216,7 +216,7 @@ final class Delivery
     }
 
     /**
-     * Runs one delivered record, as the adapter hands it over.
+     * Runs one delivered record, as the platform hands it over.
      *
      * @param  array{timeout?: int, tries?: int, backoff?: int}  $options
      */
@@ -355,7 +355,7 @@ it('runs Laravel\'s failure handling when a job fails for good, and acknowledges
         ->and($failed[0]['queue'])->toBe('emails')
         ->and($failed[0]['uuid'])->toBe(json_decode($body, true)['uuid'])
         ->and($failed[0]['exception'])->toContain('the mail server is down')
-        // Failed for good: finished, so the adapter answers 2xx.
+        // Failed for good: finished, so the platform answers 2xx.
         ->and($outcome->failed)->toBeTrue()
         ->and($outcome->released)->toBeFalse()
         ->and($delivery->tasksCreated())->toHaveCount(1);

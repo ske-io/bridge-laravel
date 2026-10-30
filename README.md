@@ -47,13 +47,13 @@ ske deploy
 
 This mode supports Laravel 11–13 and PHP 8.3–8.5. Laravel stays booted between HTTP requests. Queues, scheduled tasks, and Artisan commands keep their existing execution paths. PHP-FPM remains the default when Octane is disabled.
 
-The bridge captures each response, runs termination callbacks and Octane cleanup, and only then returns the response to the adapter. A lifecycle failure fails the invocation and discards the worker; the adapter does not replay the request. Application side effects may already have occurred. Workers also retire after 250 requests by default; set a positive `octane-max-requests` runtime setting to change the limit.
+The bridge captures each response, runs termination callbacks and Octane cleanup, and only then returns the response to the platform. A lifecycle failure fails the invocation and discards the worker; the platform does not replay the request. Application side effects may already have occurred. Workers also retire after 250 requests by default; set a positive `octane-max-requests` runtime setting to change the limit.
 
-Forms, sessions, cookies, nested uploads, and downloads retain their Laravel behavior. Finite streamed responses are buffered while their request context is active. Platform body limits and deadlines apply; live streaming and SSE are unavailable. The adapter parses multipart requests with Go's standard library and owns temporary upload files until lifecycle completion. No multipart-parser package is required in the application.
+Forms, sessions, cookies, nested uploads, and downloads retain their Laravel behavior. Finite streamed responses are buffered while their request context is active. Platform body limits and deadlines apply; live streaming and SSE are unavailable. The platform parses multipart requests and owns temporary upload files until the request lifecycle completes. No multipart-parser package is required in the application.
 
 Applications must follow Laravel's Octane compatibility guidance: do not retain request-specific state in static variables or long-lived singletons. This mode does not run Swoole, RoadRunner, or FrankenPHP servers. Server-specific task workers, shared tables, timers, and Octane server management commands are unavailable; use queues and scheduled tasks for durable background work.
 
-Deploy the coordinated adapter, runtime, and bridge changes together. Before releasing this mode, validate warm invocations and freeze/thaw behavior on a disposable AWS environment, including validation redirects, two independent browser sessions, authentication, termination failures, and worker retirement. Cloud Run is not supported by this mode yet.
+Cloud Run is not supported by this mode yet.
 
 ## Documentation
 
