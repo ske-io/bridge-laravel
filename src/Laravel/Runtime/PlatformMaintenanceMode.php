@@ -6,6 +6,7 @@ namespace Ske\Bridge\Laravel\Runtime;
 
 use Illuminate\Contracts\Foundation\MaintenanceMode;
 use RuntimeException;
+use Ske\Bridge\Runtime\Environment;
 
 /**
  * Laravel's maintenance mode, driven by the platform. SKE puts an environment

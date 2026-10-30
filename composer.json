@@ -1,16 +1,10 @@
 {
-    "name": "ske-io/laravel-bridge",
-    "description": "Runs a Laravel application on SKE: HTTP, queue and console",
+    "name": "ske-io/php-bridge",
+    "description": "Runs PHP applications on SKE: HTTP, queues and console",
     "type": "library",
     "license": "MIT",
     "require": {
-        "php": "^8.3",
-        "illuminate/container": "^11.0 || ^12.0 || ^13.0",
-        "illuminate/contracts": "^11.0 || ^12.0 || ^13.0",
-        "illuminate/http": "^11.0 || ^12.0 || ^13.0",
-        "illuminate/log": "^11.0 || ^12.0 || ^13.0",
-        "illuminate/queue": "^11.0 || ^12.0 || ^13.0",
-        "illuminate/support": "^11.0 || ^12.0 || ^13.0"
+        "php": "^8.3"
     },
     "require-dev": {
         "laravel/framework": "^11.0 || ^12.0 || ^13.0",
@@ -20,22 +14,27 @@
         "laravel/pint": "^1.27",
         "laravel/octane": "^2.22"
     },
+    "conflict": {
+        "laravel/framework": "<11.0 || >=14.0",
+        "ske-io/laravel-bridge": "*"
+    },
     "autoload": {
         "files": [
             "bootstrap.php"
         ],
         "psr-4": {
-            "Ske\\Bridge\\Laravel\\": "src/"
+            "Ske\\Bridge\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Ske\\Bridge\\Laravel\\Tests\\": "tests/"
+            "Ske\\Bridge\\Tests\\": "tests/"
         }
     },
     "suggest": {
         "aws/aws-sdk-php": "Required on AWS for the default ske queue connection, which sends jobs to SQS.",
         "inertiajs/inertia-laravel": "Required only for applications opting into Inertia SSR.",
+        "laravel/framework": "Laravel 11, 12 or 13. The bridge integrates with it automatically when it is installed.",
         "laravel/octane": "Required at ^2.22 in production dependencies when enabling Octane HTTP execution on AWS."
     },
     "minimum-stability": "stable",

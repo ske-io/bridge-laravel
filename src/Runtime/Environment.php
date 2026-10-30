@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Ske\Bridge\Laravel\Runtime;
+namespace Ske\Bridge\Runtime;
 
 /**
  * Reads the process environment without the framework.
  *
- * The bridge's earliest code runs before Laravel exists — before `env()`,
+ * The bridge's earliest code runs before the framework exists — before `env()`,
  * before Dotenv, before the container — so it has to read the environment
  * itself, and which of the three sources actually carries a variable depends
  * on the SAPI and on php.ini:

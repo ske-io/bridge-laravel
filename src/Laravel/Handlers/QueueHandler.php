@@ -6,8 +6,8 @@ namespace Ske\Bridge\Laravel\Handlers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Ske\Bridge\Laravel\Queue\JobOutcome;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
+use Ske\Bridge\Queue\JobOutcome;
 
 final readonly class QueueHandler
 {

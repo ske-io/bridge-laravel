@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use Ske\Bridge\Laravel\Runtime\Environment;
+use Ske\Bridge\Runtime\Environment;
 
 /**
  * Runs a test with a clean slate for one variable in all three sources, and

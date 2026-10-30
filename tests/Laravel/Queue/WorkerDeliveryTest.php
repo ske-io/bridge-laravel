@@ -26,8 +26,8 @@ use Illuminate\Queue\Worker;
 use Illuminate\Support\Carbon;
 use Ske\Bridge\Laravel\Queue\CloudTasksConnector;
 use Ske\Bridge\Laravel\Queue\CloudTasksQueue;
-use Ske\Bridge\Laravel\Queue\JobOutcome;
 use Ske\Bridge\Laravel\Queue\QueueRunner;
+use Ske\Bridge\Queue\JobOutcome;
 
 /*
  * A job's whole round trip with the framework's real Worker: dispatched through

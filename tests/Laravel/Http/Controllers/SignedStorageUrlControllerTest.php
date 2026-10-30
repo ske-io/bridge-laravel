@@ -374,7 +374,7 @@ it('registers no route when uploads are turned off', function () {
 });
 
 it('ships its config, publishable on its own tag', function () {
-    $config = require __DIR__.'/../../../config/ske.php';
+    $config = require __DIR__.'/../../../../config/ske.php';
 
     expect($config['uploads'])->toBe([
         'enabled' => true,
