@@ -46,10 +46,10 @@ it('exposes the message the platform delivered', function () {
 });
 
 it('records a deletion instead of performing one', function () {
-    // The receipt handle lives with the adapter, so the application states the
-    // decision rather than talking to the broker. The previous bridge invented a
-    // handle from the message id; deletion was rejected and every successful job
-    // was redelivered until the queue gave up on it.
+    // The receipt handle lives with the platform, so the application states the
+    // decision rather than talking to the broker. A handle invented from the
+    // message id would be rejected on deletion, and every successful job would
+    // be redelivered until the queue gave up on it.
     $job = makeJob();
 
     $job->delete();
@@ -75,7 +75,7 @@ it('records a release with its delay', function () {
 });
 
 it('does not report a released job as deleted', function () {
-    // Laravel's worker deletes as part of releasing; the adapter must make the
+    // Laravel's worker deletes as part of releasing; the platform must make the
     // message visible again, not remove it.
     $job = makeJob();
 
@@ -88,8 +88,8 @@ it('does not report a released job as deleted', function () {
 
 it('fails through Laravel\'s failure handling and reports the job finished', function () {
     // The failed() hook and the JobFailed event are what an application hangs
-    // its failure handling on; skipping them, as the bridge used to, lost every
-    // failure silently.
+    // its failure handling on; skipping them would lose every failure
+    // silently.
     FailingHandler::$failures = [];
     $container = new Container;
     $events = new Dispatcher($container);
@@ -108,7 +108,7 @@ it('fails through Laravel\'s failure handling and reports the job finished', fun
         ->and($seen)->toBe(['Connection timed out'])
         ->and($job->failure()?->getMessage())->toBe('Connection timed out')
         ->and($outcome->failed)->toBeTrue()
-        // Failed is its own outcome: the adapter acknowledges it, it is
+        // Failed is its own outcome: the platform acknowledges it, it is
         // neither redelivered nor counted as deleted.
         ->and($outcome->deleted)->toBeFalse()
         ->and($outcome->released)->toBeFalse()

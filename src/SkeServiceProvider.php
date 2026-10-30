@@ -34,7 +34,7 @@ use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 /**
  * Wires what a deployment needs: HTTP, delivered queue jobs, and the setup
  * every process gets (logging, the queue connection, maintenance mode). The
- * adapter runs commands and the scheduler as plain `php artisan` processes,
+ * platform runs commands and the scheduler as plain `php artisan` processes,
  * which boot through here like any other.
  *
  * Everything here is inert off-platform. A developer running the same
@@ -77,7 +77,7 @@ final class SkeServiceProvider extends ServiceProvider
         $this->correlateRequests();
         $this->registerRoutes();
 
-        // The adapter delivers queue jobs through the internal route and
+        // The platform delivers queue jobs through the internal route and
         // probes /up for readiness; maintenance only closes the application
         // to its visitors.
         PreventRequestsDuringMaintenance::except(['__ske/*', 'up']);
@@ -117,7 +117,7 @@ final class SkeServiceProvider extends ServiceProvider
      * HTTP kernel rather than left to the application's own middleware list,
      * because a deployment should not have to know this.
      *
-     * Proxy trust is deliberately left to the application. The adapter hands
+     * Proxy trust is deliberately left to the application. The platform hands
      * PHP the address the platform saw connect as REMOTE_ADDR, with the real
      * scheme and host, so with no trusted proxies Request::ip() and url() are
      * already right. An application behind a CDN trusts that CDN's ranges with
@@ -160,7 +160,7 @@ final class SkeServiceProvider extends ServiceProvider
 
     /**
      * The image has no log files to read, so everything goes to stderr, which
-     * the adapter forwards to the platform's log. Each record is one JSON
+     * the platform forwards to its log viewer. Each record is one JSON
      * line, its exception's stack trace included, which the logs page reads
      * into level, message, context and exception. A LOG_STDERR_FORMATTER
      * the deployment sets still wins.

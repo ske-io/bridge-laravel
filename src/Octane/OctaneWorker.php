@@ -100,7 +100,7 @@ final class OctaneWorker
             try {
                 $this->shutdown();
             } catch (Throwable) {
-                // The adapter will terminate the entire process group.
+                // The container's entry process will terminate the entire process group.
             }
 
             return ['version' => 1, 'error' => 'Octane request lifecycle failed.', 'retire' => true];

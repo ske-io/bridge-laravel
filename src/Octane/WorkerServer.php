@@ -72,8 +72,8 @@ final class WorkerServer
                     $this->write($connection, $response);
 
                     if ($response['retire'] ?? false) {
-                        // The adapter reports this invocation before stopping,
-                        // even if its supervised worker has already exited.
+                        // The platform reports this invocation before stopping,
+                        // even if this worker has already exited.
                         return;
                     }
                 } catch (Throwable $e) {

@@ -32,7 +32,7 @@ it('lets a request carrying the marking header through', function () {
 
 it('answers 404 rather than 403 for anything else', function (?string $header) {
     // Telling a caller these routes exist and are merely forbidden is more than
-    // they need to know; the adapter answers the same way.
+    // they need to know; the container's entry process answers the same way.
     expect(fn () => guard(requestWithHeader($header)))
         ->toThrow(NotFoundHttpException::class);
 })->with([

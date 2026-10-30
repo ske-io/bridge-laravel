@@ -35,7 +35,7 @@ use Ske\Bridge\Laravel\Runtime\PlatformMaintenanceMode;
 use Ske\Bridge\Laravel\SkeServiceProvider;
 
 /**
- * The two variables the deploy engine sets on every function it creates. Both
+ * The two variables the platform sets on every function it creates. Both
  * are cleared from all three sources Environment reads, so an off-platform test
  * is off-platform whatever the machine running the suite happens to export.
  */
@@ -142,7 +142,7 @@ it('is inert when the application is not running on the platform', function () {
     });
 });
 
-it('recognises either variable the deploy engine sets', function (string $variable) {
+it('recognises either variable the platform sets', function (string $variable) {
     withPlatform(present: false, callback: function () use ($variable) {
         expect(SkeServiceProvider::runningOnPlatform())->toBeFalse();
 
@@ -204,7 +204,7 @@ it('binds the queue runner as a singleton', function () {
     });
 });
 
-it('registers the internal route the adapter calls', function () {
+it('registers the internal route the platform calls', function () {
     withPlatform(present: true, callback: function () {
         $app = applicationFor();
 
@@ -229,7 +229,7 @@ it('drives maintenance mode from the platform instead of a file', function () {
     });
 });
 
-it('keeps the adapter routes and the readiness probe open during maintenance', function () {
+it('keeps the platform routes and the readiness probe open during maintenance', function () {
     withPlatform(present: true, callback: function () {
         PreventRequestsDuringMaintenance::flushState();
         $app = applicationFor();

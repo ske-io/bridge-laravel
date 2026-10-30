@@ -19,9 +19,8 @@ use Throwable;
  * Runs the messages the platform delivered in one invocation.
  *
  * Options come from the environment's queue settings rather than the
- * framework's defaults: the API sets them on the queue's function and the
- * adapter sends them with each batch. Each is optional, and the worker's own
- * default applies to one that is missing.
+ * framework's defaults: the platform sends them with each batch. Each is
+ * optional, and the worker's own default applies to one that is missing.
  *
  * The timeout sent is the queue's, which is also how long the platform lets
  * the function run. The job timeout is kept TIMEOUT_MARGIN seconds below it

@@ -46,8 +46,8 @@ it('reads a variable from $_ENV', function () {
 
 it('falls back to the process environment when neither superglobal carries it', function () {
     // The case that matters on a deployment: variables_order without "E"
-    // leaves $_ENV empty, and a console or queue worker started by the adapter
-    // has no request to fill $_SERVER from.
+    // leaves $_ENV empty, and a console or queue worker started by the
+    // container's entry process has no request to fill $_SERVER from.
     withSkeEnvVariable('SKE_TEST_VAR', function () {
         putenv('SKE_TEST_VAR=from-process');
 

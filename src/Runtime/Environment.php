@@ -19,7 +19,8 @@ namespace Ske\Bridge\Laravel\Runtime;
  * - `$_ENV` is populated only when `variables_order` contains "E", which the
  *   production php.ini does not.
  * - `getenv()` reads the real process environment, which is what a worker
- *   started by the adapter (or a console command) inherits.
+ *   started by the container's entry process (or a console command)
+ *   inherits.
  *
  * Reading all three is the only way to see a variable the platform set,
  * whichever entry point is running.

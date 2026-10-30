@@ -98,7 +98,7 @@ final class FramedRequest
 
     /**
      * Preserve wire order and let PHP interpret bracket names and collisions.
-     * The adapter has already parsed boundaries and owns all temporary paths.
+     * The platform has already parsed boundaries and owns all temporary paths.
      *
      * @param  list<array<string, mixed>>  $parts
      * @return array{array<string|int, mixed>, array<string|int, mixed>}

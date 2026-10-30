@@ -61,9 +61,9 @@ it('returns one outcome per record, in order', function () {
 });
 
 it('carries the deployment queue settings into the worker', function () {
-    // The adapter forwards these from the environment's queue settings. The
-    // previous bridge constructed a bare WorkerOptions, so every one of them
-    // reached the worker as a framework default.
+    // The platform forwards these from the environment's queue settings. A
+    // bare WorkerOptions would let every one of them reach the worker as a
+    // framework default.
     $worker = new RecordingWorker;
 
     makeRunner($worker)->process(
@@ -134,7 +134,7 @@ it('tolerates a record missing its fields', function () {
         ->and($worker->handled[0]->attempts())->toBe(1);
 });
 
-it('reports a released job so the adapter makes it visible again', function () {
+it('reports a released job so the platform makes it visible again', function () {
     $worker = new RecordingWorker;
     $worker->onProcess = fn (PlatformJob $job) => $job->release(45);
 

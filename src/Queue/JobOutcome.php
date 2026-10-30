@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace Ske\Bridge\Laravel\Queue;
 
 /**
- * What the adapter should do with one message now that the worker has run it.
+ * What the platform should do with one message now that the worker has run it.
  *
  * Deleting, releasing and failing all need the receipt handle, which only the
- * adapter has — so the application states the decision and the adapter performs
- * it.
+ * platform has — so the application states the decision and the platform
+ * performs it.
  *
  * A failed job is finished. When the application kept no record of it (no
  * failed jobs store, or one that could not be written) it is a dead letter:
- * the adapter keeps the message where the platform keeps failed messages, so it
+ * the platform keeps the message where the platform keeps failed messages, so it
  * can still be inspected and retried.
  */
 final readonly class JobOutcome
